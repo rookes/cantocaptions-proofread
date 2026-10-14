@@ -11,7 +11,8 @@ Sources (paths from config/paths.toml):
   * CantoCaptions     Optional Characters.md
       -> references/optional-characters.md
 
-The files are copied verbatim under a provenance header, so the skill never drifts from
+The files are copied under a provenance header, with their tables flattened to one line per
+row (compact_tables), so the skill never drifts from
 the conventions CantoCaptions publishes. Do not hand-edit the generated files; edit the
 source and re-run.
 """
@@ -41,6 +42,39 @@ def header(src: Path, what: str) -> str:
             f"     {_rel(src)}\n     {what}. Do not edit here; edit the source and re-run. -->\n\n")
 
 
+def _cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def compact_tables(md: str) -> str:
+    """Markdown tables -> one line per row, without the alignment padding and separator rows
+    (half the characters, and easier for an agent to read or search). The column names come
+    first: `Columns: A | B | C`, then `- a | b | c` per row, empty trailing cells dropped."""
+    out, table = [], []
+
+    def flush():
+        if not table:
+            return
+        head = _cells(table[0])
+        rows = [r for r in table[1:] if not set(r.replace("|", "").strip()) <= set("-: ")]
+        out.append("Columns: " + " | ".join(head))
+        for r in rows:
+            cells = _cells(r)
+            while cells and not cells[-1]:
+                cells.pop()
+            out.append("- " + " | ".join(cells))
+        table.clear()
+
+    for line in md.splitlines():
+        if line.lstrip().startswith("|"):
+            table.append(line)
+        else:
+            flush()
+            out.append(line)
+    flush()
+    return "\n".join(out) + "\n"
+
+
 def section(text: str, heading: str) -> str:
     lines = text.splitlines()
     start = next(i for i, ln in enumerate(lines) if ln.strip() == heading)
@@ -56,15 +90,15 @@ def main() -> None:
     conv = paths.get("cantocaptions_ai") / "cantocaptions_ai" / "languages" / "yue" / "proofread" / "cantocaptions.md"
     (OUT / "conventions.md").write_text(
         header(conv, "The CantoCaptions character conventions, with particle meanings")
-        + conv.read_text(encoding="utf-8"), encoding="utf-8")
+        + compact_tables(conv.read_text(encoding="utf-8")), encoding="utf-8")
     readme = paths.get("cantocaptions") / "README.md"
     (OUT / "style-guide.md").write_text(
         header(readme, "The 'Subtitle Style Guide' section of the CantoCaptions README")
-        + section(readme.read_text(encoding="utf-8"), "## Subtitle Style Guide"), encoding="utf-8")
+        + compact_tables(section(readme.read_text(encoding="utf-8"), "## Subtitle Style Guide")), encoding="utf-8")
     opt = paths.get("cantocaptions") / "Optional Characters.md"
     (OUT / "optional-characters.md").write_text(
         header(opt, "Recommended (not mandatory) CantoCaptions conventions")
-        + opt.read_text(encoding="utf-8"), encoding="utf-8")
+        + compact_tables(opt.read_text(encoding="utf-8")), encoding="utf-8")
     for p in sorted(OUT.glob("*.md")):
         print(f"{p.relative_to(ROOT)}  {p.stat().st_size} bytes")
 

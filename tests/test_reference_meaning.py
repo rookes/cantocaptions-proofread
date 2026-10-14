@@ -15,28 +15,30 @@ def _with_reference(ws):
 def test_mishearing_fix_needs_reference_evidence(workspace):
     _with_reference(workspace)
     with pytest.raises(ValueError, match="reference"):
-        flags.add(workspace["id"], 2, "mishearing", "essential", "high", "阿媽實囉囉攣瞓唔着㗎",
-                  ["asr_qwen: 食攞攞攣", "asr_ft: 食多多亂"])
-    f = flags.add(workspace["id"], 2, "mishearing", "essential", "high", "阿媽實囉囉攣瞓唔着㗎",
-                  ["reference: 一定坐立不安 = 實囉囉攣", "asr_qwen: 食攞攞攣"])
+        flags.add(workspace["id"], 2, "mishearing", "fix", "阿媽實囉囉攣瞓唔着㗎",
+                  ["asr_qwen: 食攞攞攣", "asr_ft: 食多多亂"], "both recognisers hear lo-syllables")
+    f = flags.add(workspace["id"], 2, "mishearing", "fix", "阿媽實囉囉攣瞓唔着㗎",
+                  ["reference: 一定坐立不安 = 實囉囉攣", "asr_qwen: 食攞攞攣"],
+                  "食多都亂 is nonsense; R 一定坐立不安 = 實囉囉攣, same tones")
     assert f["evidence"][0]["source"] == "reference"
 
 
 def test_meaning_check_scope(workspace):
     _with_reference(workspace)
     # Conventions, queries, and cues without a reference line need no reference evidence.
-    flags.add(workspace["id"], 2, "standard", "suggested", "high", "阿媽食多都亂瞓唔著㗎", ["lint: x"])
-    flags.add(workspace["id"], 1, "mishearing", "suggested", "medium", "你畀我喇", ["asr_ft: 你畀我喇"])
-    flags.add(workspace["id"], 4, "mishearing", "query", "low", None, ["asr_ft: 一定得㗎喇"])
+    flags.add(workspace["id"], 2, "standard", "fix", "阿媽食多都亂瞓唔著㗎", ["lint: x"], "convention: 着 → 著 test")
+    flags.add(workspace["id"], 1, "mishearing", "suggest", "你畀我喇", ["asr_ft: 你畀我喇"], "no reference line on cue 1")
+    flags.add(workspace["id"], 4, "mishearing", "query", None, ["asr_ft: 一定得㗎喇"], "something is off, unclear what")
 
 
 def test_batch_reports_failures_and_keeps_the_rest(workspace):
     _with_reference(workspace)
-    items = [{"cue": 1, "category": "mishearing", "severity": "suggested", "proposed": "你畀我喇",
-              "evidence": ["asr_ft: 你畀我喇"]},
-             {"cue": 2, "category": "mishearing", "severity": "essential", "confidence": "high",
-              "proposed": "阿媽實囉囉攣瞓唔着㗎", "evidence": ["asr_qwen: 食攞攞攣"]}]
-    with pytest.raises(ValueError, match="1 flags recorded"):
+    items = [{"cue": 1, "category": "mishearing", "grade": "suggest", "proposed": "你畀我喇",
+              "evidence": ["asr_ft: 你畀我喇"], "reason": "no reference line on cue 1"},
+             {"cue": 2, "category": "mishearing", "grade": "fix",
+              "proposed": "阿媽實囉囉攣瞓唔着㗎", "evidence": ["asr_qwen: 食攞攞攣"],
+              "reason": "both recognisers hear lo-syllables"}]
+    with pytest.raises(ValueError, match="1 records added"):
         flags.add_many(workspace["id"], items)
     assert [f["cue"] for f in flags.load(workspace["id"])] == [1]
 

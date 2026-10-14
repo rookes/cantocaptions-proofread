@@ -46,3 +46,5 @@
 | 迪亞斯 | dik6 aa3 si1 | | Nack's surname (Tiers); reference + S1E07 |
 | 米力斯 | mai5 lik6 si1 | 米利斯 | Mylius; reference + S1E07 |
 | 塞姆斯基 | coi3 mou5 si1 gei1 | | Mylius's surname (Zeramuski); reference + S1E07 |
+| 密達比也路立夏 | mat6 daat6 bei2 jaa5 lou6 laap6 haa6 | 密達比都路立夏 | Mitabi Jarnach; reference + S1E11 |
+| 妮可 | nei4 ho2 | | Rico Brzenska; reference + S1E11 |

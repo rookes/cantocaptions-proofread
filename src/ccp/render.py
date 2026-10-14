@@ -12,6 +12,8 @@ placed under the cue it belongs to. Format (see the proofread-subtitles skill):
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from . import episode, flags as flagstore, lint
 from .corpus import FINAL_PARTICLES
 from .jyutping import is_sound
@@ -25,7 +27,7 @@ MODEL_TAGS = {"ft": "≠ft", "qw": "≠qw"}
 
 # Pure spelling variants (same sound, the standard picks one): folded before comparing any
 # recogniser with the draft, so an ASR line appears only for a difference in what was said.
-VARIANT_FOLD = {"裡": "裏", "說": "説", "爲": "為", "搵": "揾", "俾": "畀", "地": "哋"}
+VARIANT_FOLD = {"裡": "裏", "說": "説", "爲": "為", "搵": "揾", "俾": "畀", "地": "哋", "喐": "郁"}
 # Pairs CantoCaptions distinguishes *by sound* (噉 gam2 / 咁 gam3, 邊 bin1 / 便 bin6,
 # 着 zoek / 著 zyu3, 吖 aa1 / 啊 aa3 / 呀 aa4) but stock Qwen3-ASR does not: it writes 咁, 邊,
 # 著, 呀 whatever was said. Its spelling of these is no evidence, so they are folded only
@@ -101,11 +103,7 @@ def render(episode_id: str, start: int = 1, end: int | None = None, show_groups:
     placed = _ref_placement(cues, refs)
     evidence = {e["cue"]: e for e in episode.read_jsonl(episode_id, "evidence.jsonl")}
     groups = {g["group"]: g for g in episode.read_jsonl(episode_id, "groups.jsonl")}
-    if episode.path(episode_id, "lint.jsonl").exists():
-        lint_rows = episode.read_jsonl(episode_id, "lint.jsonl")
-    else:
-        from pathlib import Path
-        lint_rows = lint.lint_file(Path(ep["srt"]), ep.get("show_slug"))
+    lint_rows = lint.lint_file(Path(ep["srt"]), ep.get("show_slug"))     # cheap: always fresh
     lint_by: dict[int, list[dict]] = {}
     for r in lint_rows:
         lint_by.setdefault(r["cue"], []).append(r)
@@ -153,9 +151,10 @@ def render(episode_id: str, start: int = 1, end: int | None = None, show_groups:
                 out.append(_asr_line(tag, hyp))
                 differs = True
         weak = [(ch, p) for ch, p, final in ev.get("peaks", []) if not final and p < WEAK_PEAK]
-        # A lone weak character where both recognisers agree with the draft is mostly noise
-        # (fast speech, music); show weak characters when they corroborate something.
-        if weak and (differs or len(weak) >= 2):
+        # Weak characters where the recognisers agree with the draft are mostly noise (fast
+        # speech, music) and only send the agent hunting; show them when they corroborate a
+        # recogniser that differs, or when there is no recogniser to compare with.
+        if weak and (differs or not ev.get("asr")):
             weak = sorted(weak, key=lambda x: x[1])[:MAX_WEAK]
             out.append("! " + "  ".join(f"{ch} {p:.2f}" for ch, p in weak))
         if ev.get("speaker_change"):
@@ -167,7 +166,7 @@ def render(episode_id: str, start: int = 1, end: int | None = None, show_groups:
             out.append(f"L {r['kind']} {to_display(r['found'])}{sug}" + (f"  ({r['note']})" if r.get("note") and r['kind'] != 'standard_written_chinese' else ""))
         for f in flags_by.get(c.pos, []):
             prop = f" → {to_display(f['proposed'])}" if f.get("proposed") is not None else ""
-            out.append(f"F#{f['id']} {f['severity']}/{f['category']}/{f['status']}{prop}")
+            out.append(f"F#{f['id']} {f['grade']}/{f['category']}/{f['status']}{prop}")
         if k + 1 < len(window):
             gap = window[k + 1].start - c.end
             if gap >= SCENE_S:

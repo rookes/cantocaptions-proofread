@@ -31,10 +31,10 @@ def test_clean_applies_records_and_can_be_undone(workspace, tmp_path):
     fl = flags.load(workspace["id"])
     fix = next(f for f in fl if f["cue"] == 2)
     assert fix["pass"] == "cleanup" and fix["status"] == "applied" and fix["evidence"][0]["source"] == "reference"
-    assert next(f for f in fl if f["cue"] == 4)["severity"] == "query"
+    assert next(f for f in fl if f["cue"] == 4)["grade"] == "query"
     assert episode.load(workspace["id"])["cleanup"]["edits"] == 1
     # A second pass may edit the same cue again (a new flag on the corrected text).
-    clean.clean(workspace["id"], clean.parse(["2|阿媽實囉囉攣，瞓唔着㗎"]))
+    clean.clean(workspace["id"], clean.parse(["2|阿媽實囉囉攣，瞓唔着㗎|punctuation: a pause before 瞓"]))
     assert SrtFile(workspace["srt"]).cue(2).text == "阿媽實囉囉攣，瞓唔着㗎"
     # The reviewer undoes the second edit from the report.
     second = max(f["id"] for f in flags.load(workspace["id"]) if f["cue"] == 2)
@@ -51,20 +51,20 @@ def test_lint_fixes_merge_with_edits(workspace):
     srt.set_text(3, "-走喇。⏎-等埋我啊……")
     srt.set_text(1, "你係咪傻㗎。")
     srt.save()
-    dry = clean.clean(workspace["id"], clean.parse(["4|一定唔得嘅啦。"]), use_lint=True, skip_lint=[1], dry_run=True)
+    dry = clean.clean(workspace["id"], clean.parse(["4|一定唔得嘅啦。|missing: 唔 was heard and the meaning needs it"]), use_lint=True, skip_lint=[1], dry_run=True)
     assert dry["edits"] == 2 and SrtFile(workspace["srt"]).cue(3).text == "-走喇。\n-等埋我啊……"
-    res = clean.clean(workspace["id"], clean.parse(["4|一定唔得嘅啦。"]), use_lint=True, skip_lint=[1])
+    res = clean.clean(workspace["id"], clean.parse(["4|一定唔得嘅啦。|missing: 唔 was heard and the meaning needs it"]), use_lint=True, skip_lint=[1])
     s = SrtFile(workspace["srt"])
     assert s.cue(3).text == "-走喇，\n-等埋我啊…"
     assert s.cue(4).text == "一定唔得嘅啦"         # the agent's edit, then the lint fix on top
     assert s.cue(1).text == "你係咪傻㗎。"          # skipped
     by_cue = {f["cue"]: f for f in flags.load(workspace["id"])}
-    assert by_cue[3]["category"] == "punctuation" and by_cue[4]["category"] == "mishearing"
+    assert by_cue[3]["category"] == "punctuation" and by_cue[4]["category"] == "missing"
     assert res["lint_remaining"].get("punctuation") == 1
 
 
 def test_report_lists_cleanup_rows(workspace):
-    clean.clean(workspace["id"], clean.parse(["2|阿媽實囉囉攣瞓唔着㗎"]))
+    clean.clean(workspace["id"], clean.parse(["2|阿媽實囉囉攣瞓唔着㗎|R 一定坐立不安 = 實囉囉攣"]))
     page = report.build(workspace["id"]).read_text(encoding="utf-8")
     data = json.loads(page.split('<script id="data" type="application/json">')[1].split("</script>")[0])
     item = data["items"][0]
@@ -106,6 +106,6 @@ def test_clean_reports_kept_particles(workspace):
     srt = SrtFile(workspace["srt"])
     srt.set_text(2, "阿媽食多都亂瞓唔着𠸏")
     srt.save()
-    res = clean.clean(workspace["id"], clean.parse(["2|阿媽實囉囉攣瞓唔着嘅"]))
+    res = clean.clean(workspace["id"], clean.parse(["2|阿媽實囉囉攣瞓唔着嘅|R 一定坐立不安 = 實囉囉攣"]))
     assert SrtFile(workspace["srt"]).cue(2).text == "阿媽實囉囉攣瞓唔着𠸏"
     assert res["particles_kept"] and res["applied"] == 1

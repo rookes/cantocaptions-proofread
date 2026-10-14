@@ -7,16 +7,16 @@ from ccp.srtio import SrtFile
 
 
 def _add(ws, cue, **kw):
-    args = dict(category="mishearing", severity="essential", confidence="high", proposed=None,
-                evidence=["reference: test"], note="")
+    args = dict(category="mishearing", grade="fix", proposed=None, evidence=["reference: test"],
+                reason="the draft does not fit the scene; test reason")
     args.update(kw)
-    return flags.add(ws["id"], cue, args.pop("category"), args.pop("severity"), args.pop("confidence"),
-                     args.pop("proposed"), args.pop("evidence"), args.pop("note"))
+    return flags.add(ws["id"], cue, args["category"], args["grade"], args["proposed"],
+                     args["evidence"], args["reason"])
 
 
 def test_flag_validation(workspace):
     with pytest.raises(ValueError):
-        _add(workspace, 2, proposed=None)                        # essential needs a fix
+        _add(workspace, 2, proposed=None)                        # a fix needs a proposal
     with pytest.raises(ValueError):
         _add(workspace, 2, proposed="阿媽食多都亂瞓唔着㗎")         # identical to the draft
     with pytest.raises(ValueError):
@@ -33,7 +33,7 @@ def test_apply_default_selection_and_text_only(workspace):
     raw_before = workspace["srt"].read_bytes()
     f1 = _add(workspace, 2, proposed="阿媽實囉囉攣瞓唔着㗎")
     _add(workspace, 4, category="particle", proposed="一定得㗎喇")                 # never by default
-    _add(workspace, 1, category="standard", severity="suggested", proposed="你畀我啦")  # below threshold
+    _add(workspace, 1, category="standard", grade="suggest", proposed="你畀我啦")  # needs --include-suggest
     res = apply.apply(workspace["id"])
     assert [a["cue"] for a in res["applied"]] == [2]
     after = SrtFile(workspace["srt"])
@@ -46,7 +46,7 @@ def test_apply_default_selection_and_text_only(workspace):
 
 def test_apply_decisions_and_stale(workspace, tmp_path):
     f1 = _add(workspace, 1, category="standard", proposed="你畀我啦")
-    f2 = _add(workspace, 4, category="particle", severity="query", proposed="一定得㗎喇")
+    f2 = _add(workspace, 4, category="particle", grade="suggest", proposed="一定得㗎喇")
     dec = tmp_path / "decisions.json"
     dec.write_text(json.dumps({"decisions": [
         {"flag": f1["id"], "decision": "accepted", "text": "你畀我啦"},
@@ -63,7 +63,7 @@ def test_apply_decisions_and_stale(workspace, tmp_path):
 
 def test_report_builds_without_media(workspace):
     _add(workspace, 2, proposed="阿媽實囉囉攣瞓唔着㗎")
-    _add(workspace, 3, category="segmentation", severity="query", proposed=None)
+    _add(workspace, 3, category="segmentation", grade="query", proposed=None)
     out = report.build(workspace["id"])
     page = out.read_text(encoding="utf-8")
     assert "<ins>實囉囉攣</ins>" in page.replace("\\u", "") or "實囉囉攣" in page

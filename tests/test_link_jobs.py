@@ -22,8 +22,8 @@ def test_choose_subs_skips_auto_translations():
 
 
 def test_review_after_auto_apply_can_revert_and_reword(workspace, tmp_path):
-    f1 = flags.add(workspace["id"], 2, "mishearing", "essential", "high", "阿媽實囉囉攣瞓唔着㗎", ["context: t"])
-    f2 = flags.add(workspace["id"], 1, "standard", "essential", "high", "你畀我啦", ["lint: 俾"])
+    f1 = flags.add(workspace["id"], 2, "mishearing", "fix", "阿媽實囉囉攣瞓唔着㗎", ["context: t"], "the draft does not fit the scene; test reason")
+    f2 = flags.add(workspace["id"], 1, "standard", "fix", "你畀我啦", ["lint: 俾"], "the draft does not fit the scene; test reason")
     apply.apply(workspace["id"])                                    # the agent applies both
     srt = SrtFile(workspace["srt"])
     assert srt.cue(1).text == "你畀我啦" and srt.cue(2).text == "阿媽實囉囉攣瞓唔着㗎"
@@ -40,7 +40,7 @@ def test_review_after_auto_apply_can_revert_and_reword(workspace, tmp_path):
 
 
 def test_export_bundle(workspace, tmp_path):
-    flags.add(workspace["id"], 1, "standard", "essential", "high", "你畀我啦", ["lint: 俾"])
+    flags.add(workspace["id"], 1, "standard", "fix", "你畀我啦", ["lint: 俾"], "the draft does not fit the scene; test reason")
     apply.apply(workspace["id"])
     (workspace["work"] / "reference.srt").write_text("1\n00:00:01,000 --> 00:00:02,000\n你給我吧\n", encoding="utf-8")
     (workspace["work"] / "reference.json").write_text(json.dumps({"language": "zh-Hant", "kind": "manual"}), encoding="utf-8")

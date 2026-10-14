@@ -3,17 +3,20 @@
 The agent reads the draft (with the reference and lint lines from `ccp render`) and writes
 down the edits it is sure of, one line per cue:
 
-    12|艾倫，快啲走                       new full text of cue 12
-    40|佢實囉囉攣|reference: 一定坐立不安   with a reason ("source: detail", as in flag evidence)
-    41|你講咩呀？|name: as the reference writes it   a category first sets the flag category
-    57|?|meaning unclear, reference: ...  a query: something is wrong, no confident fix
+    12|艾倫，快啲走|name: the reference and the glossary write 艾倫; 愛倫 is a mishearing
+    40|佢實囉囉攣|食多都亂 makes no sense; R 一定坐立不安 = 實 + 囉囉攣 (sat6 lo1 lo1 lyun1)
+    57|?|meaning unclear: R says 他已經走了 but nothing in the draft sounds like it
+
+The third field, the reason, is required: why the line is wrong and why the new text is
+right. It may start with a category (`name:`, `standard:`, `punctuation:` …). A line without a
+reason is held back and reported, not applied.
 
 `⏎` is a line break inside a cue. Blank lines and lines starting with # are ignored.
 
 Sentence-final particles are never changed here: where an edit changes, adds or drops one,
 the draft's particle is put back and the rest of the edit applies (keep_particles).
 
-Each edit becomes a flag (severity suggested, confidence high, pass "cleanup") and is applied
+Each edit becomes a flag (grade fix, pass "cleanup") and is applied
 to the working draft at once, so the record, the report and `ccp apply --decisions`
 (reject = undo) work as for any other correction. --lint adds the mechanical lint fixes
 (spelling variants outside protected words, glossary forms, punctuation) to every cue,
@@ -211,10 +214,15 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
             fixed, _ = _lint_pass(c.text, c, avoid)
             if fixed != c.text:
                 lint_cues.add(c.pos)
-    planned, queries, particles, particle_words = [], [], [], []
+    planned, queries, particles, particle_words, held = [], [], [], [], []
     for pos in sorted(set(by_cue) | lint_cues):
         c = srt.cue(pos)
         e = by_cue.get(pos)
+        if e and len(e["why"].strip()) < flagstore.MIN_REASON:
+            held.append(e["cue"])
+            e = None                 # no reason: the agent's edit waits; lint fixes may still apply
+            if pos not in lint_cues:
+                continue
         if e and e["text"] is None:
             queries.append(e)
             continue
@@ -230,14 +238,17 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
             continue
         lint_only = _lint_pass(c.text, c, avoid)[0]
         category = (e or {}).get("category") or _category(c.text, text, lint_only)
-        evidence = []
-        if e and e["why"]:
-            evidence.append(e["why"])
+        evidence = [e["why"]] if e and e["why"].split(":", 1)[0].strip() in flagstore.SOURCES else []
         evidence += [f"lint: {x}" for x in fixes]
+        reason = e["why"] if e else "convention: " + "; ".join(fixes)
         planned.append({"cue": pos, "from": c.text, "to": text, "category": category,
-                        "evidence": evidence or ["context: cleanup pass"]})
+                        "reason": reason, "evidence": evidence})
     result = {"episode_id": episode_id, "edits": len(planned), "queries": len(queries),
               "lint_fixed_cues": len([p for p in planned if any(x.startswith("lint:") for x in p["evidence"])])}
+    if held:
+        result["held_back"] = {"cues": held, "why": "these edit lines have no reason (N|text|reason): "
+                               "add one sentence on why the line is wrong and the new text right, then "
+                               "submit them again"}
     if particles:
         result["particles_kept"] = particles
         result["particles_note"] = ("the cleanup pass never changes sentence-final particles, so the draft's "
@@ -255,15 +266,15 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
     made, skipped = [], []
     for p in planned:
         try:
-            f = flagstore.add(episode_id, p["cue"], p["category"], "suggested", "high", p["to"],
-                              p["evidence"], extra={"pass": "cleanup"})
+            f = flagstore.add(episode_id, p["cue"], p["category"], "fix", p["to"], p["evidence"],
+                              p["reason"], extra={"pass": "cleanup"})
             made.append(f["id"])
         except ValueError as err:
             skipped.append({"cue": p["cue"], "reason": str(err)})
     for q in queries:
         try:
-            flagstore.add(episode_id, q["cue"], q["category"] or "other", "query", "medium", None,
-                          [q["why"]] if q["why"] else [], extra={"pass": "cleanup"})
+            flagstore.add(episode_id, q["cue"], q["category"] or "other", "query", None, [], q["why"],
+                          extra={"pass": "cleanup"})
         except ValueError as err:
             skipped.append({"cue": q["cue"], "reason": str(err)})
     by_cat: dict[str, int] = {}
@@ -273,7 +284,7 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
     if skipped:
         result["skipped"] = skipped
     if no_apply:
-        result["recorded_only"] = "flags recorded, nothing applied (apply with `ccp apply <id> --min-severity suggested`)"
+        result["recorded_only"] = "flags recorded, nothing applied (apply with `ccp apply <id>`)"
         return result
     res = applier.apply(episode_id, only=made)
     result["applied"] = len(res["applied"])
@@ -290,7 +301,6 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
                      "at": time.strftime("%Y-%m-%d %H:%M:%S")}
     episode.save(ep)
     rows = lint.lint_file(Path(ep["srt"]), ep.get("show_slug"))
-    episode.write_jsonl(episode_id, "lint.jsonl", rows)
     left: dict[str, int] = {}
     for r in rows:
         left[r["kind"]] = left.get(r["kind"], 0) + 1

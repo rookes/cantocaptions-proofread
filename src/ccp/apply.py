@@ -14,10 +14,10 @@ skipped.
 Selection:
   * with --decisions (exported from report.html): exactly the accepted flags, using the text
     the reviewer left in the box (structural flags are applied as proposed);
-  * otherwise: flags at or above --min-severity and --min-confidence that carry a proposed
-    text. Never particle flags (their measured precision is poor), and never structural flags
-    unless --structure is given: re-timing and splitting need the user's go-ahead. --include
-    names flags to apply regardless.
+  * otherwise: flags graded `fix` (and `suggest` too with --include-suggest). Never particle
+    flags (their measured precision is poor), and never structural flags unless --structure is
+    given: re-timing and splitting need the user's go-ahead. --include names flags to apply
+    regardless.
 """
 from __future__ import annotations
 
@@ -29,8 +29,6 @@ from pathlib import Path
 from . import episode, flags as flagstore, paths
 from .srtio import SrtFile, from_display
 
-SEV = {"essential": 0, "suggested": 1, "query": 2}
-CONF = {"high": 0, "medium": 1, "low": 2}
 
 
 def _lint(path: Path) -> list[str]:
@@ -43,8 +41,8 @@ def _lint(path: Path) -> list[str]:
     return [ln.split(":", 2)[-1].strip() if str(path) in ln else ln.strip() for ln in lines if ln.strip()]
 
 
-def select(episode_id: str, decisions: Path | None, min_severity: str, min_confidence: str,
-           include: list[int], structure: bool, only: list[int] | None = None) -> list[tuple[dict, str | None]]:
+def select(episode_id: str, decisions: Path | None, include_suggest: bool,
+           include: list[int], structure: bool, only: list[int] | None = None) -> list[dict]:
     """[{flag, kind: text|structure|revert, text, expect}]: *expect* is the cue text the edit
     must find (the draft, or for an already-applied flag the text it applied). *only*: exactly
     these open flags (ccp clean)."""
@@ -89,8 +87,9 @@ def select(episode_id: str, decisions: Path | None, min_severity: str, min_confi
                 pick(f, "text", text, f["draft"])
         flagstore.save(episode_id, sorted(flags.values(), key=lambda f: (f["cue"], f["id"])))
         return chosen
+    grades = ("fix", "suggest") if include_suggest else ("fix",)
     for f in flags.values():
-        if f["status"] in ("rejected", "applied"):
+        if f["status"] in ("rejected", "applied", "kept"):
             continue
         has_fix = f.get("proposed") is not None or bool(f.get("proposed_cues"))
         kind = "structure" if f.get("proposed_cues") else "text"
@@ -98,22 +97,21 @@ def select(episode_id: str, decisions: Path | None, min_severity: str, min_confi
             if has_fix:
                 pick(f, kind, f.get("proposed"), f["draft"])
             continue
-        if (not has_fix or f["category"] == "particle"
-                or (kind == "structure" and not structure)
-                or SEV[f["severity"]] > SEV[min_severity] or CONF[f["confidence"]] > CONF[min_confidence]):
+        if (not has_fix or f["category"] == "particle" or f["grade"] not in grades
+                or (kind == "structure" and not structure)):
             continue
         pick(f, kind, f.get("proposed"), f["draft"])
     return chosen
 
 
-def apply(episode_id: str, decisions: Path | None = None, min_severity: str = "essential",
-          min_confidence: str = "high", include: list[int] = (), dry_run: bool = False,
-          structure: bool = False, only: list[int] | None = None) -> dict:
+def apply(episode_id: str, decisions: Path | None = None, include_suggest: bool = False,
+          include: list[int] = (), dry_run: bool = False, structure: bool = False,
+          only: list[int] | None = None) -> dict:
     ep = episode.load(episode_id)
     path = Path(ep["srt"])
     srt = SrtFile(path)
     style = srt.numbering()
-    chosen = select(episode_id, decisions, min_severity, min_confidence, list(include), structure, only)
+    chosen = select(episode_id, decisions, include_suggest, list(include), structure, only)
     before_lint = _lint(path)
     applied, skipped = [], []
     shifts: list[tuple[int, int]] = []          # (cue position, cues added after it)

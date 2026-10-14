@@ -12,11 +12,12 @@ character must match what the speaker said.
 
 ## Where to look
 
-| question | file |
-|---|---|
-| Which particle character for a reading; what a particle means; compounds; interjections; affixes; pronouns; mandatory variants and spellings | `references/conventions.md` |
-| Punctuation, formatting, line length, timing, multi-speaker lines, brackets, what is left untranscribed | `references/style-guide.md` |
-| Recommended but optional characters (disambiguation, consistency, loanwords) | `references/optional-characters.md` |
+- `references/conventions.md`: Which particle character for a reading; what a particle means; compounds; interjections; affixes; pronouns; mandatory variants and spellings
+- `references/style-guide.md`: Punctuation, formatting, line length, timing, multi-speaker lines, brackets, what is left untranscribed
+- `references/optional-characters.md`: Recommended but optional characters (disambiguation, consistency, loanwords)
+
+These files are long: search them for the character or Jyutping you need (Grep) rather than
+reading them whole. For one particle, `uv run ccp dict <particle>` is quicker.
 
 These files are generated from the CantoCaptions README and the cantocaptions-ai language
 pack by `scripts/build_standards.py`. If they look out of date, tell the user. Do not edit
@@ -28,9 +29,9 @@ them.
    words.hk for any word they do not cover (`uv run ccp dict WORD`), then the majority usage in
    strict-tier subtitles (`uv run ccp corpus`). Optional characters are recommendations: do
    not flag a file for not following them.
-2. **Particles by sound, not by habit.** To check a particle, establish its syllable and tone
-   (from meaning and context: see the notes in `conventions.md`), then take the character from
-   the grid. `uv run ccp particle <char or jyutping>` shows words.hk's usage notes for that
+2. **Particles by sound, not by habit.** When a particle is in question (AGENTS.md principle
+   4 says when), establish its syllable and tone from meaning and context (see the notes in
+   `conventions.md`), then take the character from the grid. `uv run ccp dict <particle>` shows words.hk's usage notes for that
    reading. words.hk often writes particles with other characters, so it is matched by
    Jyutping. Some pairs to keep apart: 啦 laa1 / 喇 laa3 / 嘞 laak3; 囖 lo1 / 咯 lo3 / 囉 lo4;
    㗎 gaa3 / 𠿪 gaa2 / 嘎 gaa4; 𠸏 ge2 / 嘅 ge3; 喎 wo3 / 𡁜 wo5; 吖 aa1 / 啊 aa3 / 呀 aa4.

@@ -1,6 +1,6 @@
 # CantoCaptions writes each sentence-final particle as the one character that matches its
 # syllable and tone (README "Sentence Final Particles"). These readings are therefore fixed
-# by convention and always listed first by `ccp jp` / sounds-like, whatever other readings
+# by convention and always listed first by `ccp cue` / sounds-like, whatever other readings
 # words.hk records for the same character.
 [readings]
 "吖" = "aa1"

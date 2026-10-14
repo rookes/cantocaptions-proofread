@@ -12,7 +12,7 @@ ok, u, ui, un, ung, ut, uk, oe, eoi, eon, oeng, eot, oek, yu, yun, yut, and syll
 **A misheard span usually keeps its tones even when initials and finals are wrong.** In the worked
 example, 食多都亂 (sik6 do1 dou1 lyun1) was really 實囉囉攣 (sat6 lo1 lo1 lyun1): every tone matched.
 So when you generate candidates, try tone-preserving ones first, and remember that a character
-can have several readings (亂 lyun6/lyun2, and in speech lyun1). `ccp jp --all` lists them.
+can have several readings (亂 lyun6/lyun2, and in speech lyun1). `ccp cue` lists them.
 
 ## Common confusions (maintainer's list)
 
@@ -40,8 +40,7 @@ can have several readings (亂 lyun6/lyun2, and in speech lyun1). `ccp jp --all`
 - Tone 5 may be mistaken for 2 or 6.
 - Tone 4 may be mistaken for 2 or 6.
 
-These are encoded as costs in `config/confusions.toml`, which `ccp sounds-like` and
-`ccp jp --vs` use.
+These are encoded as costs in `config/confusions.toml`, which `ccp sounds-like` uses.
 
 ## Measured: how the recognisers mishear
 
@@ -62,99 +61,30 @@ often; dropped h (h/∅) and k/ng codas (ik/ing) are common.
 
 **Initials** (523 changes)
 
-| pair | count |
-|---|---|
-| l ↔ n | 51 |
-| d ↔ z | 33 |
-| s ↔ z | 21 |
-| h ↔ ∅ | 20 |
-| j ↔ z | 15 |
-| c ↔ z | 13 |
-| h ↔ l | 12 |
-| b ↔ f | 12 |
-| ng ↔ w | 11 |
-| d ↔ n | 9 |
-| g ↔ ng | 9 |
-| d ↔ t | 9 |
+l ↔ n 51 · d ↔ z 33 · s ↔ z 21 · h ↔ ∅ 20 · j ↔ z 15 · c ↔ z 13 · h ↔ l 12 · b ↔ f 12 · ng ↔ w 11 · d ↔ n 9 · g ↔ ng 9 · d ↔ t 9
 
 **Finals** (732 changes)
 
-| pair | count |
-|---|---|
-| o ↔ ou | 30 |
-| aau ↔ au | 20 |
-| ik ↔ ing | 13 |
-| au ↔ ou | 12 |
-| ou ↔ ung | 12 |
-| i ↔ in | 12 |
-| ei ↔ eoi | 11 |
-| ai ↔ ei | 10 |
-| i ↔ ik | 10 |
-| aai ↔ ai | 10 |
-| an ↔ ang | 9 |
-| ai ↔ eoi | 9 |
+o ↔ ou 30 · aau ↔ au 20 · ik ↔ ing 13 · au ↔ ou 12 · ou ↔ ung 12 · i ↔ in 12 · ei ↔ eoi 11 · ai ↔ ei 10 · i ↔ ik 10 · aai ↔ ai 10 · an ↔ ang 9 · ai ↔ eoi 9
 
 **Tones** (647 changes)
 
-| pair | count |
-|---|---|
-| 3 ↔ 6 | 93 |
-| 1 ↔ 3 | 83 |
-| 5 ↔ 6 | 68 |
-| 2 ↔ 5 | 60 |
-| 2 ↔ 6 | 56 |
-| 4 ↔ 6 | 56 |
-| 4 ↔ 5 | 35 |
-| 1 ↔ 6 | 35 |
-| 2 ↔ 3 | 35 |
-| 1 ↔ 2 | 33 |
-| 1 ↔ 5 | 25 |
-| 3 ↔ 5 | 22 |
+3 ↔ 6 93 · 1 ↔ 3 83 · 5 ↔ 6 68 · 2 ↔ 5 60 · 2 ↔ 6 56 · 4 ↔ 6 56 · 4 ↔ 5 35 · 1 ↔ 6 35 · 2 ↔ 3 35 · 1 ↔ 2 33 · 1 ↔ 5 25 · 3 ↔ 5 22
 
 **Most common syllable mishearings (truth, heard)** (1092 changes)
 
-| pair | count |
-|---|---|
-| 昴 maau5 ↔ 茂 mau6 | 12 |
-| 係 hai6 ↔ 喺 hai2 | 11 |
-| 嚟 lei4 ↔ 你 nei5 | 10 |
-| 就 zau6 ↔ 走 zau2 | 8 |
-| 上 soeng6 ↔ 相 soeng3 | 8 |
-| 嗰 go2 ↔ 我 ngo5 | 7 |
-| 𡃁 leng1 ↔ 靚 leng3 | 6 |
-| 你 nei5 ↔ 嚟 lei4 | 6 |
-| 去 heoi3 ↔ 佢 heoi5 | 6 |
-| 係 hai6 ↔ 哎 ai1 | 5 |
-| 只 zi2 ↔ 隻 zek3 | 5 |
-| 玲 ling4 ↔ 力 lik6 | 5 |
+昴 maau5 ↔ 茂 mau6 12 · 係 hai6 ↔ 喺 hai2 11 · 嚟 lei4 ↔ 你 nei5 10 · 就 zau6 ↔ 走 zau2 8 · 上 soeng6 ↔ 相 soeng3 8 · 嗰 go2 ↔ 我 ngo5 7 · 𡃁 leng1 ↔ 靚 leng3 6 · 你 nei5 ↔ 嚟 lei4 6 · 去 heoi3 ↔ 佢 heoi5 6 · 係 hai6 ↔ 哎 ai1 5 · 只 zi2 ↔ 隻 zek3 5 · 玲 ling4 ↔ 力 lik6 5
 
 **Homophone swaps (spelling, not hearing)** (436 changes)
 
-| pair | count |
-|---|---|
-| 返 ↔ 翻 | 62 |
-| 晒 ↔ 曬 | 32 |
-| 緹 ↔ 提 | 13 |
-| 竇 ↔ 豆 | 13 |
-| 菲 ↔ 飛 | 11 |
-| 魯 ↔ 老 | 8 |
-| 莎 ↔ 沙 | 8 |
-| 郁 ↔ 喐 | 8 |
-| 賊 ↔ 拆 | 8 |
-| 佬 ↔ 路 | 8 |
-| 贓 ↔ 裝 | 7 |
-| 帕 ↔ 柏 | 6 |
-| 復 ↔ 服 | 6 |
-| 牲 ↔ 生 | 5 |
-| 過 ↔ 個 | 5 |
+返 ↔ 翻 62 · 晒 ↔ 曬 32 · 緹 ↔ 提 13 · 竇 ↔ 豆 13 · 菲 ↔ 飛 11 · 魯 ↔ 老 8 · 莎 ↔ 沙 8 · 郁 ↔ 喐 8 · 賊 ↔ 拆 8 · 佬 ↔ 路 8 · 贓 ↔ 裝 7 · 帕 ↔ 柏 6 · 復 ↔ 服 6 · 牲 ↔ 生 5 · 過 ↔ 個 5
 
 ## Using this
 
-1. Romanize the doubtful span and every hypothesis (`ccp jp TEXT --all`).
+1. Read the Jyutping of the doubtful span and of every hypothesis (`ccp cue` shows both).
 2. For each syllable, ask which nearby sounds it could have been, using the lists above.
    Keep the tone first, then vary the initial, then the final.
 3. Let `ccp sounds-like` do the dictionary search, and judge its candidates by meaning.
 4. A fix that sounds nothing like the draft (a different syllable count, all tones changed)
-   needs strong independent support, such as both recognisers hearing it, and must still
-   mean what the reference means. Recognisers hearing a sound-alike whose meaning differs
-   from the reference is a shared mishearing, not a correction.
+   needs strong independent support, such as both recognisers hearing it, and it must still
+   mean what the reference means (AGENTS.md principle 1).

@@ -10,19 +10,19 @@ from ccp.srtio import SrtFile
 
 
 def _add(ws, cue, **kw):
-    a = dict(category="segmentation", severity="suggested", confidence="medium", proposed=None,
-             evidence=["context: test"], note="", proposed_cues=None)
+    a = dict(category="segmentation", grade="suggest", proposed=None,
+             evidence=["context: test"], reason="two sentences across a clear pause", proposed_cues=None)
     a.update(kw)
-    return flags.add(ws["id"], cue, a["category"], a["severity"], a["confidence"], a["proposed"],
-                     a["evidence"], a["note"], (), (), False, a["proposed_cues"])
+    return flags.add(ws["id"], cue, a["category"], a["grade"], a["proposed"], a["evidence"],
+                     a["reason"], (), (), False, a["proposed_cues"])
 
 
 def test_split_applies_only_with_structure_and_renumbers(workspace):
     split = [{"start": 4.2, "end": 5.0, "text": "-走喇"}, {"start": 5.1, "end": 6.0, "text": "-等埋我啊"}]
     f_split = _add(workspace, 3, proposed_cues=split)
-    f_later = _add(workspace, 4, category="particle", severity="query", proposed=None)
-    assert apply.apply(workspace["id"], min_severity="suggested", min_confidence="medium")["applied"] == []  # needs --structure
-    res = apply.apply(workspace["id"], min_severity="suggested", min_confidence="medium", structure=True)
+    f_later = _add(workspace, 4, category="particle", grade="query", proposed=None)
+    assert apply.apply(workspace["id"], include_suggest=True)["applied"] == []  # needs --structure
+    res = apply.apply(workspace["id"], include_suggest=True, structure=True)
     assert [a["flag"] for a in res["applied"]] == [f_split["id"]]
     assert res["renumbered"] == "sequential"
     srt = SrtFile(workspace["srt"])
@@ -77,7 +77,7 @@ def test_timing_split_follows_the_audio(workspace):
     assert b["end"] == 4.2
     assert s["onset_gaps_s"][0] == pytest.approx((33 - 18) / 25, abs=0.01)
     assert timing.load_saved(workspace["id"], 2)["proposed_cues"] == s["proposed_cues"]
-    f = flags.add(workspace["id"], 2, "segmentation", "suggested", "medium", None, [], "", (), (), False,
+    f = flags.add(workspace["id"], 2, "segmentation", "suggest", None, [], "two sentences across a pause", (), (), False,
                   flags.saved_timing(workspace["id"], 2))
     assert len(f["proposed_cues"]) == 2
     with pytest.raises(SystemExit):

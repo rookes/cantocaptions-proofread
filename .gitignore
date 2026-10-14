@@ -7,3 +7,4 @@ cache/
 config/paths.local.toml
 # Junction to .agents/skills, created by scripts/setup.ps1
 .claude/skills
+

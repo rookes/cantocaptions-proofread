@@ -39,20 +39,16 @@ touched until you `ccp publish`, and only with their go-ahead.
    After a transcription (or a realign of an AI-generated file that was not cleaned yet), the
    draft is machine output: follow the `clean-draft` skill first, with no evidence. Corrections
    are applied to the working draft.
-7. **Publish** when the work is done and the user agrees: `uv run ccp publish <id> --dry-run`
-   shows what would change, and `uv run ccp publish <id>` replaces the source file in
-   CantoCaptions with the draft (keeping its BOM and line-ending style). The file name stays
-   as it was. Renaming a `[WIP]` file is the user's call. `--to-main` writes into the show's
-   main-area folder instead, and `--to <path>` writes anywhere. Never commit.
+7. **Publish** when the work is done and the user agrees
+   (`proofread-subtitles/references/report-and-apply.md`). The file name stays as it was;
+   renaming a `[WIP]` file is the user's call.
 
 ## Which realign mode
 
-| the input | mode | what happens to timings and text |
-|---|---|---|
-| A WIP or hand-timed subtitle whose timings are **roughly right but sloppy** (late starts, long tails, two sentences held in one cue) | `adjust` (default) | Each cue is re-placed against the audio, within a tolerance of where it was. Cues are split where the audio clearly pauses. Text is not cleaned. |
-| A subtitle with **good timing for a different release** (constant offset, speed difference, cuts) | `sync` | One fitted transform moves every cue. Durations scale, no forced alignment, no splitting. Text is not cleaned. |
-| A **plain transcript**, or timings that are meaningless | `transcript` | Every line is placed from scratch. Text is cleaned with the language rules. |
-| Not sure | `auto` | `transcript` for untimed text, `sync` for a timed subtitle. |
+- `adjust` (default): for a WIP or hand-timed subtitle whose timings are **roughly right but sloppy** (late starts, long tails, two sentences held in one cue). Each cue is re-placed against the audio, within a tolerance of where it was. Cues are split where the audio clearly pauses. Text is not cleaned.
+- `sync`: for a subtitle with **good timing for a different release** (constant offset, speed difference, cuts). One fitted transform moves every cue. Durations scale, no forced alignment, no splitting. Text is not cleaned.
+- `transcript`: for a **plain transcript**, or timings that are meaningless. Every line is placed from scratch. Text is cleaned with the language rules.
+- `auto`: when unsure: `transcript` for untimed text, `sync` for a timed subtitle.
 
 `--input draft` realigns the current working draft instead of the source (for example after
 correcting its text). `--input <file>` realigns any other transcript.
@@ -66,9 +62,8 @@ asked for one. Then the `≠qw` lines in `ccp render` compare it with the *other
 
 ## What not to do
 
-- Do not call `cantocaptions`, `uv run --project ../cantocaptions-ai ...`, or anything in
-  cantocaptions-ai yourself, and do not browse `E:/dataset_media` or other media folders. If
-  `ccp` cannot do something, tell the user what is missing.
+- Do not run cantocaptions-ai or browse media folders yourself (AGENTS.md hard rule 1).
 - Do not publish, rename or delete files in CantoCaptions without the user's explicit OK.
-- A new pipeline run replaces the working draft. If the current draft already has applied
-  corrections, `ccp pipeline` refuses, so publish first or pass `--force` only if the user agrees.
+- A new pipeline run replaces the working draft. Realigning the draft itself (`--input draft`)
+  keeps its corrections; any other run refuses while the draft has applied corrections, so
+  publish first, or pass `--force` only if the user agrees.

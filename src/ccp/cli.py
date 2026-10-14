@@ -48,29 +48,6 @@ def cmd_locate(a):
     _out(res)
 
 
-def cmd_adhoc(a):
-    """A one-cue workspace for a loose audio clip (e.g. tests/single-line-smoke)."""
-    from . import episode, paths
-    import subprocess
-    dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of",
-                                "csv=p=0", a.audio], capture_output=True, text=True).stdout.strip() or 0)
-    work = paths.work_dir(a.id)
-    srt = work / "draft.srt"
-    srt.write_text(f"1\n00:00:00,000 --> {_ts(dur)}\n{a.text}\n", encoding="utf-8")
-    rec = {"episode_id": a.id, "srt_path": str(srt), "show_slug": a.id, "season": None,
-           "episodes": [], "media_path": None}
-    ep = episode.create(rec, a.audio_track, str(Path(a.audio).resolve()))
-    if a.reference:
-        (work / "reference.srt").write_text(f"1\n00:00:00,000 --> {_ts(dur)}\n{a.reference}\n", encoding="utf-8")
-        (work / "reference.json").write_text(json.dumps({"source": "given on the command line", "offset": 0.0}), encoding="utf-8")
-    _out(ep)
-
-
-def _ts(t: float) -> str:
-    from .srtio import fmt_time
-    return fmt_time(t)
-
-
 def cmd_status(a):
     from . import episode, flags
     from .prune import reclaimable_mb
@@ -87,7 +64,7 @@ def cmd_status(a):
                         "not cleaned yet: start with the text-only cleanup pass (skill clean-draft), no evidence needed")}
            if machine or done else {}),
         "reference": json.loads(ref.read_text(encoding="utf-8")) if ref.exists() else None,
-        "evidence": (w / "evidence.jsonl").exists(), "lint": (w / "lint.jsonl").exists(),
+        "evidence": (w / "evidence.jsonl").exists(),
         "emissions": (w / "emissions" / "tokens.json").exists(),
         "flags": flags.summary(rows), "report": (w / "report.html").exists(),
         "prunable_mb": reclaimable_mb(a.id),
@@ -127,27 +104,28 @@ def cmd_evidence(a):
     _out(res)
 
 
-def cmd_lint(a):
-    from . import episode, lint
-    ep = episode.load(a.id)
-    rows = lint.lint_file(Path(ep["srt"]), ep.get("show_slug"))
-    episode.write_jsonl(a.id, "lint.jsonl", rows)
-    by_kind: dict = {}
-    for r in rows:
-        by_kind[r["kind"]] = by_kind.get(r["kind"], 0) + 1
-    if a.json:
-        return _out(rows)
-    lines = [f"{len(rows)} lint hits: {by_kind}"]
-    for r in rows:
-        sug = f" → {r['suggest']}" if r.get("suggest") else ""
-        lines.append(f"cue {r['cue']} [{r['severity']}] {r['kind']}: {r['found']}{sug}"
-                     + (f"  ({r['note']})" if r.get("note") else ""))
-    _out("\n".join(lines).replace("\n\n", "\n"))
-
-
 def cmd_render(a):
     from .render import render
     _out(render(a.id, a.start, a.end, a.groups, not a.no_times))
+
+
+MAX_CUES = 20
+
+
+def _cue_numbers(items: list[str]) -> list[int]:
+    """`9 11 24`, `230-235` or `230,231`: cue numbers, at most MAX_CUES of them."""
+    out: list[int] = []
+    for it in items:
+        for part in str(it).replace("..", "-").split(","):
+            lo, sep, hi = part.strip().strip("()").partition("-")
+            if not lo.isdigit() or (sep and not hi.isdigit()):
+                raise SystemExit(f"not a cue number or range: {part!r} (use 9 11 24 or 230-235)")
+            out += list(range(int(lo), int(hi) + 1)) if sep else [int(lo)]
+    if len(out) > MAX_CUES:
+        raise SystemExit(f"{len(out)} cues asked for: `ccp cue` is for suspects, at most {MAX_CUES} per call. "
+                         "Read a window with `ccp render <id> --from N --to M`, then ask `cue` only for "
+                         "the cues you are unsure of.")
+    return out
 
 
 def cmd_cue(a):
@@ -155,11 +133,13 @@ def cmd_cue(a):
     so many suspects fit in one call); --json for the full structure."""
     from . import episode, flags as fl
     from .render import _ref_placement
+    a.cue = _cue_numbers(a.cue)
     ep = episode.load(a.id)
     srt = episode.srt(ep)
     evidence = {e["cue"]: e for e in episode.read_jsonl(a.id, "evidence.jsonl")}
     placed = _ref_placement(srt.cues, episode.reference_cues(a.id))
-    lint_rows = episode.read_jsonl(a.id, "lint.jsonl") + episode.read_jsonl(a.id, "timing.jsonl")
+    from . import lint
+    lint_rows = lint.lint_file(Path(ep["srt"]), ep.get("show_slug")) + episode.read_jsonl(a.id, "timing.jsonl")
     flag_rows = fl.load(a.id)
     out = [_cue_detail(a, srt, srt.cue(n), evidence, placed, lint_rows, flag_rows) for n in a.cue]
     if a.json:
@@ -238,7 +218,7 @@ def _cue_text(d: dict) -> str:
         lines.append(f"lint   {r['kind']} {to_display(r['found'])}" + (f"→{r['suggest']}" if r.get("suggest") else ""))
     for f in d["flags"]:
         prop = f" → {to_display(f['proposed'])}" if f.get("proposed") is not None else ""
-        lines.append(f"flag   #{f['id']} {f['severity']}/{f['category']}/{f['status']}{prop}")
+        lines.append(f"flag   #{f['id']} {f['grade']}/{f['category']}/{f['status']}{prop}")
     return chr(10).join(lines)
 
 
@@ -277,29 +257,6 @@ def cmd_sounds_like(a):
           "matches": rows})
 
 
-def cmd_jp(a):
-    from . import jyutping, sound
-    out = {"text": a.text, "jyutping": jyutping.romanize(a.text, all_readings=a.all)}
-    if a.vs:
-        out["vs"] = [{"text": v, "jyutping": jyutping.romanize(v, all_readings=a.all),
-                      "sound_distance": sound.span_distance(a.text, v)} for v in a.vs]
-    _out(out)
-
-
-def cmd_particle(a):
-    from . import dictionary, jyutping
-    q = " ".join(a.query)
-    if any(ch.isdigit() for ch in q):
-        jp = q
-    else:
-        fixed = jyutping.particle_readings()
-        missing = [ch for ch in q if ch not in fixed]
-        if missing:
-            raise SystemExit(f"not a CantoCaptions particle: {''.join(missing)}; give Jyutping instead (e.g. laa3)")
-        jp = " ".join(fixed[ch] for ch in q)
-    _out(dictionary.particle_senses(jp, a.senses))
-
-
 def cmd_dict(a):
     from . import dictionary, jyutping
     q = " ".join(a.query)
@@ -322,15 +279,9 @@ def cmd_corpus(a):
     from . import corpus
     if a.vs:
         return _out(corpus.compare([a.pattern, *a.vs], a.tier, a.show))
+    if a.final:
+        return _out(corpus.colloc(a.pattern, "final", a.tier, a.show, 8, 2, a.examples, a.among))
     _out(corpus.search(a.pattern, a.tier, a.show, a.examples, a.context))
-
-
-def cmd_colloc(a):
-    from . import corpus
-    if a.vs:
-        return _out(corpus.compare([a.phrase, *a.vs], a.tier, a.show))
-    mode = "next" if a.next else "prev" if a.prev else "final"
-    _out(corpus.colloc(a.phrase, mode, a.tier, a.show, a.window, a.n, a.examples, a.among))
 
 
 # ---------------------------------------------------------------------------- audio
@@ -456,19 +407,34 @@ def cmd_copy_draft(a):
 
 # ---------------------------------------------------------------------------- findings
 
+def _legacy_grade(a) -> str | None:
+    """--severity/--confidence from older instructions → a grade."""
+    if a.grade or not (a.severity or a.confidence):
+        return a.grade
+    if a.severity == "query" or a.confidence == "low":
+        return "query"
+    return "fix" if (a.confidence or "medium") == "high" else "suggest"
+
+
 def cmd_flag(a):
     from . import flags
+    a.grade = _legacy_grade(a)
+    a.reason = a.reason or a.note
     if a.action == "add":
         if a.json_file:
-            items = json.loads(Path(a.json_file).read_text(encoding="utf-8"))
+            items = json.loads(Path(a.json_file).read_text(encoding="utf-8-sig"))
             return _out([flags.fmt(f) for f in flags.add_many(a.id, items if isinstance(items, list) else [items])])
-        need = [k for k in ("cue", "category", "severity") if getattr(a, k) is None]
+        need = [k for k in ("cue", "category", "grade", "reason") if getattr(a, k) is None]
         if need:
             raise SystemExit(f"missing --{', --'.join(need)}")
         pc = flags.saved_timing(a.id, a.cue) if a.timing else None
-        f = flags.add(a.id, a.cue, a.category, a.severity, a.confidence, a.proposed, a.evidence or [],
-                      a.note or "", a.related or [], a.alt or [], a.replace, pc)
+        f = flags.add(a.id, a.cue, a.category, a.grade, a.proposed, a.evidence or [], a.reason,
+                      a.related or [], a.alt or [], a.replace, pc)
         return _out(flags.fmt(f))
+    if a.action == "keep":
+        if a.cue is None or not a.reason:
+            raise SystemExit("give --cue N and --reason \"why the line is right\"")
+        return _out(flags.fmt(flags.keep(a.id, a.cue, a.reason, a.evidence or [], a.category or "other")))
     if a.action == "update":
         if a.flag_id is None:
             raise SystemExit("give the flag id: ccp flag update ID FLAG_ID ...")
@@ -476,13 +442,13 @@ def cmd_flag(a):
         if a.timing:
             cue = next(f["cue"] for f in flags.load(a.id) if f["id"] == a.flag_id)
             pc = flags.saved_timing(a.id, cue)
-        f = flags.update(a.id, a.flag_id, category=a.category, severity=a.severity,
-                         confidence=a.confidence, proposed=a.proposed, evidence=a.evidence,
-                         note=a.note, status=a.status, alternatives=a.alt, proposed_cues=pc)
+        f = flags.update(a.id, a.flag_id, category=a.category, grade=a.grade, proposed=a.proposed,
+                         evidence=a.evidence, reason=a.reason, status=a.status, alternatives=a.alt,
+                         proposed_cues=pc)
         return _out(flags.fmt(f))
     rows = flags.load(a.id)
-    if a.severity:
-        rows = [f for f in rows if f["severity"] == a.severity]
+    if a.grade:
+        rows = [f for f in rows if f["grade"] == a.grade]
     if a.status:
         rows = [f for f in rows if f["status"] == a.status]
     if a.json:
@@ -512,8 +478,11 @@ def _prune_hint(res: dict, episode_id: str) -> dict:
 
 def cmd_apply(a):
     from . import apply
-    res = apply.apply(a.id, Path(a.decisions) if a.decisions else None, a.min_severity,
-                      a.min_confidence, a.include or [], a.dry_run, a.structure)
+    # --min-severity/--min-confidence are the old spelling of --include-suggest.
+    include_suggest = a.include_suggest or a.min_severity in ("suggested", "query") \
+        or a.min_confidence in ("medium", "low")
+    res = apply.apply(a.id, Path(a.decisions) if a.decisions else None, include_suggest,
+                      a.include or [], a.dry_run, a.structure)
     _out(res if a.dry_run or not res.get("applied") else _prune_hint(res, a.id))
 
 
@@ -539,7 +508,7 @@ def cmd_prune(a):
 # ---------------------------------------------------------------------------- parser
 
 def build_parser() -> argparse.ArgumentParser:
-    from .flags import CATEGORIES, CONFIDENCES, SEVERITIES, STATUSES
+    from .flags import CATEGORIES, GRADES, STATUSES
     p = argparse.ArgumentParser(prog="ccp", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
 
@@ -564,11 +533,6 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--name", help="file name stem (default: the video title or source name)")
     s.set_defaults(fn=cmd_export)
 
-    s = sub.add_parser("adhoc", help="one-cue workspace for a loose audio clip")
-    s.add_argument("id"); s.add_argument("--audio", required=True); s.add_argument("--text", required=True)
-    s.add_argument("--reference"); s.add_argument("--audio-track", type=int, default=0)
-    s.set_defaults(fn=cmd_adhoc)
-
     s = sub.add_parser("status", help="what the workspace holds so far")
     s.add_argument("id"); s.set_defaults(fn=cmd_status)
 
@@ -586,16 +550,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--pad", type=float, default=0.5)
     s.set_defaults(fn=cmd_evidence)
 
-    s = sub.add_parser("lint", help="deterministic convention checks (writes lint.jsonl)")
-    s.add_argument("id"); s.add_argument("--json", action="store_true"); s.set_defaults(fn=cmd_lint)
-
     s = sub.add_parser("render", help="the review stream for a window of cues")
     s.add_argument("id"); s.add_argument("--from", dest="start", type=int, default=1)
     s.add_argument("--to", dest="end", type=int); s.add_argument("--groups", action="store_true")
     s.add_argument("--no-times", action="store_true"); s.set_defaults(fn=cmd_render)
 
     s = sub.add_parser("cue", help="everything known about one or more cues")
-    s.add_argument("id"); s.add_argument("cue", type=int, nargs="+", help="one or more cue numbers")
+    s.add_argument("id"); s.add_argument("cue", nargs="+", help=f"suspect cue numbers (9 11 24) or a range (230-235); at most {MAX_CUES}")
     s.add_argument("--context", type=int, default=1, help="neighbouring cues shown on each side")
     s.add_argument("--json", action="store_true", help="full JSON instead of compact text")
     s.set_defaults(fn=cmd_cue)
@@ -610,11 +571,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--counts", action="store_true", help="add strict-corpus counts per match")
     s.set_defaults(fn=cmd_sounds_like)
 
-    s = sub.add_parser("jp", help="Jyutping of a text; --vs to compare sound distance")
-    s.add_argument("text"); s.add_argument("--vs", nargs="+"); s.add_argument("--all", action="store_true")
-    s.set_defaults(fn=cmd_jp)
-
-    s = sub.add_parser("dict", help="words.hk lookup by term or Jyutping")
+    s = sub.add_parser("dict", help="words.hk lookup by term or Jyutping (a particle is looked up by its reading)")
     s.add_argument("query", nargs="+"); s.add_argument("--toneless", action="store_true")
     s.add_argument("--senses", type=int, default=4); s.add_argument("--limit", type=int, default=15)
     s.add_argument("--literal", action="store_true", help="look a particle character up as written")
@@ -622,28 +579,17 @@ def build_parser() -> argparse.ArgumentParser:
                    help="list words containing the text (or the Jyutping sequence, e.g. 'gam2 ji5')")
     s.set_defaults(fn=cmd_dict)
 
-    s = sub.add_parser("particle", help="words.hk usage of a final particle, matched by Jyutping")
-    s.add_argument("query", nargs="+", help="a CantoCaptions particle (喇, 𠿪, 㗎喇) or Jyutping (laa3)")
-    s.add_argument("--senses", type=int, default=12); s.set_defaults(fn=cmd_particle)
-
     s = sub.add_parser("corpus", help="regex search over the strict-tier corpus")
     s.add_argument("pattern"); s.add_argument("--show"); s.add_argument("--tier", default="strict")
     s.add_argument("--examples", type=int, default=10)
     s.add_argument("--vs", nargs="+", help="compare counts of literal forms: PATTERN vs these")
     s.add_argument("-C", "--context", type=int, default=0,
                    help="show N neighbouring cues around each example (same episode)")
+    s.add_argument("--final", action="store_true",
+                   help="which clause-final particles follow PATTERN (a comma ends the clause)")
+    s.add_argument("--among", default="",
+                   help="with --final: a particle family (laa, aa, gaa, ge, lo, wo, zaa, ze, gam) or literal chars")
     s.set_defaults(fn=cmd_corpus)
-
-    s = sub.add_parser("colloc", help="collocation stats over the strict-tier corpus")
-    s.add_argument("phrase", help="regex")
-    g = s.add_mutually_exclusive_group()
-    g.add_argument("--final", action="store_true", help="clause-final particle (default)")
-    g.add_argument("--next", action="store_true"); g.add_argument("--prev", action="store_true")
-    s.add_argument("--among", default="", help="particle family (laa, aa, gaa, ge, lo, wo, zaa, ze, gam) or literal chars")
-    s.add_argument("--vs", nargs="+", help="compare literal forms instead: PHRASE vs these")
-    s.add_argument("--n", type=int, default=2); s.add_argument("--window", type=int, default=8)
-    s.add_argument("--show"); s.add_argument("--tier", default="strict"); s.add_argument("--examples", type=int, default=3)
-    s.set_defaults(fn=cmd_colloc)
 
     for name, fn, helptext in (("listen", cmd_listen, "(GPU) re-run both ASRs on a cue or span"),
                                ("score", cmd_score, "(GPU) CTC-score candidate texts against a cue's audio")):
@@ -693,15 +639,19 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("copy-draft", help="work on a copy of the source (edits then go to a new file, not the source)")
     s.add_argument("id"); s.set_defaults(fn=cmd_copy_draft)
 
-    s = sub.add_parser("flag", help="record findings: add / update / list")
-    s.add_argument("action", choices=["add", "update", "list"]); s.add_argument("id")
+    s = sub.add_parser("flag", help="record findings: add / keep / update / list")
+    s.add_argument("action", choices=["add", "keep", "update", "list"]); s.add_argument("id")
     s.add_argument("flag_id", nargs="?", type=int)
     s.add_argument("--cue", type=int); s.add_argument("--category", choices=CATEGORIES)
-    s.add_argument("--severity", choices=SEVERITIES); s.add_argument("--confidence", choices=CONFIDENCES)
-    s.add_argument("--proposed", help="full new cue text (⏎ or \\n between lines); omit for a query")
+    s.add_argument("--grade", choices=GRADES,
+                   help="fix (confident) | suggest (reviewer decides) | query (no confident fix) | keep (checked, right)")
+    s.add_argument("--reason", help="required: why the line is wrong (or right) and why the proposal is right")
+    s.add_argument("--severity", help=argparse.SUPPRESS); s.add_argument("--confidence", help=argparse.SUPPRESS)
+    s.add_argument("--note", help=argparse.SUPPRESS)
+    s.add_argument("--proposed", help="full new cue text (⏎ or \\n between lines); fix and suggest only")
     s.add_argument("--evidence", action="append", help="'source: detail', repeatable")
-    s.add_argument("--alt", action="append", help="alternative full texts")
-    s.add_argument("--note"); s.add_argument("--related", type=int, action="append")
+    s.add_argument("--alt", action="append", help="alternative full texts (for a query)")
+    s.add_argument("--related", type=int, action="append")
     s.add_argument("--status", choices=STATUSES); s.add_argument("--replace", action="store_true")
     s.add_argument("--timing", action="store_true",
                    help="attach the retime/split that `ccp timing` saved for this cue")
@@ -727,8 +677,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = sub.add_parser("apply", help="write accepted corrections into the subtitle (never commits)")
     s.add_argument("id"); s.add_argument("--decisions", help="decisions.json exported from the report")
-    s.add_argument("--min-severity", choices=SEVERITIES, default="essential")
-    s.add_argument("--min-confidence", choices=CONFIDENCES, default="high")
+    s.add_argument("--include-suggest", action="store_true",
+                   help="also apply flags graded suggest (default: only fix)")
+    s.add_argument("--min-severity", help=argparse.SUPPRESS)
+    s.add_argument("--min-confidence", help=argparse.SUPPRESS)
     s.add_argument("--include", type=int, action="append", help="also apply this flag id")
     s.add_argument("--structure", action="store_true",
                    help="also apply retimes and splits (flags with proposed cues); only when the user asked")
@@ -757,8 +709,6 @@ def main(argv=None) -> None:
         sp = sub.choices[args.cmd]
         sp.print_help(sys.stderr)
         sp.exit(2, f"\nccp {args.cmd}: error: unrecognized arguments: {' '.join(extra)}\n")
-    if getattr(args, "confidence", None) is None and args.cmd == "flag" and args.action == "add":
-        args.confidence = "medium"
     try:
         args.fn(args)
     except (ValueError, FileNotFoundError) as e:

@@ -32,6 +32,17 @@ powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ```
 
 Paths live in `config/paths.toml`. Put machine-specific overrides in `config/paths.local.toml`.
+Defaults, relative to this directory:
+
+| what | where |
+|---|---|
+| CantoCaptions subtitle library (a git repo) | `../CantoCaptions/Subtitles/` |
+| cantocaptions-dataset (manifest linking subtitles to media, quality tiers) | `../cantocaptions-dataset/data/` |
+| cantocaptions-ai (ASR, alignment, vocal isolation, diarization) | `../cantocaptions-ai/` |
+| sub-convert (OCR of image subtitles) | `../sub-convert/` |
+| media files | `E:/dataset_media/` |
+| words.hk dictionary | `dictionaries/words-hk-full-bilingual.json` |
+| per-show name glossaries (kept by the agent) | `glossaries/<show_slug>.md` |
 
 ### Windows console encoding
 
@@ -69,17 +80,16 @@ profile so every session (including an agent's, if its terminal loads the profil
 | `ccp timing <id> N [--split "a\|b"]` | retime or split proposals from the stored audio alignment |
 | `ccp reference <id>` | find/extract/OCR a reference subtitle and line up its timing |
 | `ccp evidence <id>` | (GPU) both recognisers and aligner peaks for every cue |
-| `ccp lint <id>` | convention checks |
 | `ccp render <id> --from N --to M` | the review stream |
 | `ccp cue <id> N` | everything about one cue |
 | `ccp sounds-like <span> --hyp …` | words that sound like a suspect span (words.hk + strict corpus) |
-| `ccp jp`, `ccp dict`, `ccp particle` | Jyutping, dictionary, particle usage (by reading) |
-| `ccp corpus`, `ccp colloc` | evidence from strict-tier subtitles only |
+| `ccp dict` | words.hk dictionary (particles are looked up by their reading) |
+| `ccp corpus` | evidence from strict-tier subtitles only; `--final` counts the particles that end a phrase |
 | `ccp listen`, `ccp score` | (GPU) re-run recognisers on a cue; CTC-score candidate texts (from stored emissions, no GPU) |
 | `ccp clean <id> --lint` / `--edits FILE` | text-only cleanup of machine-made drafts: bulk edits, recorded as flags and applied at once |
-| `ccp flag add/update/list` | record findings |
+| `ccp flag add/keep/update/list` | record each decision: grade fix / suggest / query / keep, with a required reason |
 | `ccp report <id>` | HTML report with clips, exports `decisions.json` |
-| `ccp apply <id> [--decisions …]` | apply corrections in place (text only, never commits) |
+| `ccp apply <id> [--decisions …] [--include-suggest]` | apply corrections in place (text only, never commits) |
 
 ## Scoring from stored emissions
 
@@ -111,4 +121,4 @@ uv run pytest
 
 CPU only. Tests that need the dictionary, CantoCaptions or the dataset skip when those are
 missing. The GPU tools are exercised by the smoke case in `tests/single-line-smoke` (see
-`.agents/skills/investigate-line/references/worked-example.md`).
+`.agents/skills/investigate-line/references/worked-examples.md`).

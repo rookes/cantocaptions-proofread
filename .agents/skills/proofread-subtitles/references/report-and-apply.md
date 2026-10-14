@@ -1,70 +1,56 @@
-# Output: report and/or edits
+# Output: report, edits, and where the result goes
 
-## Report
+This is the one place for the output step; `clean-draft`, `prepare-draft` and
+`subtitles-from-link` point here.
 
-```
-uv run ccp report <id>            # audio clips (cue ± 1 s)
-uv run ccp report <id> --video    # 480p video clips instead (slower, larger)
-```
+## Where the result goes
 
-This writes `work/<id>/report.html` with clips in `work/<id>/clips/`. It opens from disk with no
-server. Flags are grouped as **Essential corrections**, **Suggested**, and **Queries**. Each card
-shows the draft and proposed text with the changed characters marked, the reference line, both
-ASR hypotheses, the neighbouring cues, your evidence and note, and a player for the clip.
+Decide before applying anything, from the user's request:
+- **Correct the file itself** (the default): `ccp apply` edits the working draft in place.
+- **"Put the edits in a new file"**, or any target other than the source: run
+  `uv run ccp copy-draft <id>` *before* any edit. Edits then go into a workspace copy. When
+  finished, write it out with `uv run ccp publish <id> --to-main` (the show's folder in the main
+  library area, with a library-style name) or `uv run ccp publish <id> --to <file or folder>`.
+  Run it with `--dry-run` first and report the target. A request that names the destination is
+  the user's go-ahead to publish there. Never overwrite an existing file unless the user says so
+  (`--overwrite`). If `publish` returns a `warning`, pass it on word for word.
+- A link job hands back a folder instead: `uv run ccp export <id>` (see `subtitles-from-link`).
 
-The reviewer can accept (optionally editing the text), reject, or leave each flag, then press
-**Export decisions** to download `decisions.json`. Tell the user the report path and that
-they can hand the exported file back to you.
+## The report
 
-Re-run `ccp report` after changing flags; clips are reused.
+`uv run ccp report <id>` writes `work/<id>/report.html`, with an audio clip (cue ± 1 s) for every
+record (`--video` for 480p video clips). It opens from disk. Sections: Fixes, Suggestions,
+Queries, Cleanup pass (compact rows), and a collapsed "Checked and kept". Each card shows the
+draft and proposal with the changes marked, the **Reason**, the reference line, both ASR lines,
+the neighbouring cues and the evidence. The reviewer accepts (optionally editing the text) or
+rejects each one, then **Export decisions** downloads `decisions.json`. Tell the user the path
+and that they can hand that file back to you. If the output reports failed clips, say so and
+quote `first_error`.
 
-## Applying edits
+## Applying
 
-Only when the user asked for edits. Three ways, from most to least reviewed:
+Only when the user asked for edits:
+1. **From the reviewer's decisions** (preferred): `uv run ccp apply <id> --decisions <path>`.
+   It applies exactly the accepted records with the reviewer's text, undoes rejected
+   corrections that were already applied, and re-words those the reviewer edited.
+2. **Directly**, when the user asked for that: `uv run ccp apply <id>` applies every `fix`;
+   `--include-suggest` adds the `suggest` records (only if the user asked for everything you
+   are fairly sure of). Queries, keeps and particle records are never applied this way.
+   `--include <flag_id>` adds one record. `--dry-run` previews.
+3. Retimes and splits: only from decisions, or with `--structure` when the user asked.
 
-1. **From the reviewer's decisions** (preferred):
-   `uv run ccp apply <id> --decisions <path to decisions.json>`
-   applies exactly the accepted flags with the reviewer's text and marks rejected ones.
-2. **High-confidence fixes directly** (when the user asked for that):
-   `uv run ccp apply <id>` applies flags that are `essential` + `high` and have a proposed
-   text, never particle flags. Widen with `--min-severity suggested --min-confidence medium`
-   only if the user explicitly asks. Add a single flag with `--include <flag_id>`.
-3. **Preview first:** add `--dry-run` to see what would change without writing.
+`ccp apply` changes only the text lines of the affected cues (timings, numbering, BOM and line
+endings stay byte-identical) and skips any record whose cue changed since it was made. It runs
+the CantoCaptions lint afterwards and shows a `git diff --stat`. Tell the user how many cues
+changed and any skipped records, and that nothing was committed.
 
-`ccp apply` edits the working draft in place: the subtitle file in the CantoCaptions working
-tree, or `work/<id>/draft.srt` for a pipeline draft (see below). It changes
-only the text lines of the affected cues (timings, numbering, BOM and line endings stay
-byte-identical) and skips any flag whose cue changed since you recorded it. It then runs the
-CantoCaptions lint and reports any new warnings, plus a `git diff --stat`.
-
-After applying, tell the user how many cues changed, list any skipped flags with the reason,
-and remind them that nothing was committed (`git -C ../CantoCaptions diff` shows the change).
-Never commit.
-
-## Retimes and splits
-
-Flags with a timing proposal show the current and proposed times in the report and can only be
-accepted or rejected, not edited. `ccp apply --decisions` applies accepted ones. Without a
-decisions file they are applied only with `--structure`. After a split, `apply` renumbers
-the cues in the file's own style and moves the later flags along.
-
-## Publishing a pipeline draft
-
-When the working draft came from `ccp pipeline` (see `ccp status`), `ccp apply` edits
-`work/<id>/draft.srt`, not the user's file. When the user is satisfied:
-1. `uv run ccp publish <id> --dry-run` shows the target and cue counts;
-2. ask the user, then `uv run ccp publish <id>` copies the draft over the source file in
-   CantoCaptions (keeping its BOM and line endings), or `--to <path>` writes elsewhere.
-It never renames or commits. `git -C ../CantoCaptions diff` shows the change.
+**A pipeline draft or a copy** (`ccp status` → `draft_origin`): `apply` edits
+`work/<id>/draft.srt`. When the user is satisfied, `uv run ccp publish <id> --dry-run`, ask, then
+`uv run ccp publish <id>` copies it over the source file (keeping its BOM and line endings).
 
 ## Cleaning up
 
-A finished episode keeps 100–700 MB of regenerable files: the stored aligner output (used by
-`score` and `timing`), the report's audio clips, and cantocaptions-ai debug files. When the job
-is done (corrections applied, the draft published or exported, and the user is not reviewing
-the report any more), run `uv run ccp prune <id>`. It keeps the draft, flags, evidence,
-references, pipeline outputs, exported subtitles and `report.html` (without audio). Do not
-prune while the user may still open the report or send back decisions. `apply`, `publish`
-and `export` mention how much a prune would free. `ccp prune --finished --dry-run` lists
-every finished workspace.
-
+A finished job keeps 100–700 MB of files that can be regenerated. When it is done (corrections
+applied, the draft published or exported, and the user no longer reviewing the report), run
+`uv run ccp prune <id>`. It keeps the draft, records, references, exported subtitles and
+`report.html` (without audio). Never prune while the user may still send back decisions.

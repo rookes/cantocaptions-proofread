@@ -1,4 +1,4 @@
-# Settings for `ccp lint`. The bulk of the variant rules is read at run time from
+# Settings for the convention checks (the `L` lines in `ccp render`, `ccp clean --lint`). The bulk of the variant rules is read at run time from
 # cantocaptions-dataset/rules/standardization.toml so the two never drift; this file
 # only adjusts it and adds what that file does not cover.
 
@@ -7,19 +7,23 @@
 skip_variants = ["牀"]
 
 # Words a variant rule must not touch: an occurrence of a nonstandard form that overlaps
-# one of these is not a hit (果啲 in 如果啲 is 如果 + 啲; 啤啤熊 is the teddy bear's name;
-# 隔離 in 被隔離 is "quarantine", not 隔籬; 唔洗衫 is "not washing clothes", not 唔使). Chosen from a survey of the library's variant
-# hits; add to it when a mechanical fix turns out wrong.
+# one of these is not a hit (果啲 in 如果啲 is 如果 + 啲; 啤啤熊 is Peppa Pig's teddy, written so
+# in the strict files; 隔離 in 被隔離 is "quarantine", not 隔籬; 唔洗衫 is "not washing clothes";
+# 姐係 in 小姐係 is 小姐 + 係; 攪 in 打攪 is the selected form). Chosen from surveys of the
+# library's and the strict corpus's hits; add to it when a mechanical fix turns out wrong.
 protect = ["如果", "結果", "效果", "後果", "成果", "水果", "生果", "蘋果", "糖果",
            "地方", "地區", "地址", "地點", "地圖",
            "被隔離", "自我隔離", "隔離病", "隔離檢", "隔離措施", "啤啤熊",
            "洗衫", "洗碗", "洗澡", "洗頭", "洗面", "洗手", "洗身", "洗牙", "洗車", "洗腳",
-           "洗地", "洗錢", "洗米", "洗菜", "洗乾淨", "洗白"]
+           "洗地", "洗錢", "洗米", "洗菜", "洗乾淨", "洗白",
+           "小姐", "師姐", "家姐", "姐姐", "大姐", "阿姐", "空姐", "表姐", "堂姐", "契姐",
+           "打攪", "顫抖", "發抖", "抖震"]
 
 # Variant rules that are right only in some uses: shown as a query for the reviewer, never
 # fixed mechanically by `ccp clean --lint`. 洗 is also "wash" (底褲唔洗); 你倆 wants a
-# rewording (你哋兩個), not 你兩.
-query_variants = ["唔洗", "唔駛", "倆"]
+# rewording (你哋兩個), not 你兩. (唔駛 is not here: the conventions require 唔使, and the
+# strict corpus never writes 唔駛.)
+query_variants = ["唔洗", "倆"]
 
 # Extra 1:1 conventions from the CantoCaptions README not in standardization.toml.
 [[extra_variants]]
@@ -32,6 +36,95 @@ standard = "BB"
 nonstandard = "她"
 standard = "他"
 note = "README: 她 is not used; 他 covers both (spoken Cantonese is usually 佢)"
+
+# The rest of the conventions tables (cantocaptions-standards/references/conventions.md:
+# "Character Variants", "Other Required CantoCaptions Conventions", "Pronouns") where the
+# replacement is mechanical. Rules that depend on reading or meaning (着/著, 便/邊, 篤/督/涿,
+# 之不過/只不過, 揼/抌/𢱕, 困/韞, 哦/𠹷) are left to the agent; Latin forms (lem, lur) would
+# match inside English words.
+[[extra_variants]]
+nonstandard = "喐"
+standard = "郁"
+[[extra_variants]]
+nonstandard = "㨂"
+standard = "揀"
+[[extra_variants]]
+nonstandard = "巿"
+standard = "市"
+[[extra_variants]]
+nonstandard = "溼"
+standard = "濕"
+[[extra_variants]]
+nonstandard = "吿"
+standard = "告"
+[[extra_variants]]
+nonstandard = "証"
+standard = "證"
+[[extra_variants]]
+nonstandard = "㩒"
+standard = "撳"
+[[extra_variants]]
+nonstandard = "𡰪"
+standard = "㞘"
+[[extra_variants]]
+nonstandard = "姖"
+standard = "佢"
+[[extra_variants]]
+nonstandard = "𠵱個"
+standard = "呢個"
+note = "the README lists 依個 for ji1 go3, but the strict files write 呢個 throughout (依個 never appears)"
+[[extra_variants]]
+nonstandard = "爹啲"
+standard = "爹哋"
+[[extra_variants]]
+nonstandard = "打搞晒"
+standard = "打攪晒"
+[[extra_variants]]
+nonstandard = "惟有"
+standard = "唯有"
+[[extra_variants]]
+nonstandard = "衹係"
+standard = "只係"
+[[extra_variants]]
+nonstandard = "唔只"
+standard = "唔止"
+[[extra_variants]]
+nonstandard = "唔單只"
+standard = "唔單止"
+[[extra_variants]]
+nonstandard = "姐係"
+standard = "即係"
+# Right only in some uses: shown for the reviewer, never applied mechanically.
+[[extra_variants]]
+nonstandard = "攪"
+standard = "搞"
+confidence = "heuristic"
+note = "搞 when it means 做 (搞錯); 打攪 keeps 攪"
+[[extra_variants]]
+nonstandard = "舔"
+standard = "𦧷"
+confidence = "heuristic"
+note = "𦧷 lem2 for licking lightly with the tongue"
+[[extra_variants]]
+nonstandard = "抖"
+standard = "唞"
+confidence = "heuristic"
+note = "唞 tau2 when it means rest (早唞, 唞氣); 顫抖 / 發抖 keep 抖"
+[[extra_variants]]
+nonstandard = "丼"
+standard = "抌"
+confidence = "heuristic"
+note = "抌 dam2 (to throw, to thump)"
+[[extra_variants]]
+nonstandard = "溚"
+standard = "𢱕"
+confidence = "heuristic"
+note = "𢱕 dap6"
+[[extra_variants]]
+nonstandard = "厾"
+standard = "㧻"
+confidence = "heuristic"
+note = "㧻 duk1 as a verb (to poke, to jab)"
 
 # Standard Written Chinese words that colloquial Cantonese writes another way. A hit is a
 # question for the reviewer, never an automatic fix: some occur inside real Cantonese

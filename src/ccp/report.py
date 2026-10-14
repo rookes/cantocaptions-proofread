@@ -21,7 +21,7 @@ from .srtio import short_time
 
 CLIP_PAD = 1.0
 CLIP_STATUS: dict = {}       # filled by build(): clips made / failed, for the command's output
-SEVERITY_ORDER = {"essential": 0, "suggested": 1, "query": 2}
+GRADE_ORDER = {"fix": 0, "suggest": 1, "query": 2, "keep": 3}
 
 
 def _clip(media: str, track: int, start: float, end: float, out: Path, video: bool) -> str | None:
@@ -48,6 +48,11 @@ def _clip(media: str, track: int, start: float, end: float, out: Path, video: bo
 
 
 def _diff_html(a: str, b: str) -> tuple[str, str]:
+    """The draft and the proposal as two rows that line up character for character: each
+    changed piece sits in a cell (`.seg`) that also holds the other row's piece, invisibly
+    (`.ghost`), so both rows reserve the width of the wider one. Line breaks show as ⏎ to keep
+    each text on one row."""
+    a, b = a.replace("\n", "⏎"), b.replace("\n", "⏎")
     sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
     left, right = [], []
     for op, i1, i2, j1, j2 in sm.get_opcodes():
@@ -56,19 +61,16 @@ def _diff_html(a: str, b: str) -> tuple[str, str]:
             left.append(x)
             right.append(y)
         else:
-            if x:
-                left.append(f"<del>{x}</del>")
-            if y:
-                right.append(f"<ins>{y}</ins>")
-    fix = lambda s: s.replace("\n", "<br>")
-    return fix("".join(left)), fix("".join(right))
+            left.append(f'<span class="seg">{f"<del>{x}</del>" if x else ""}<span class="ghost">{y}</span></span>')
+            right.append(f'<span class="seg">{f"<ins>{y}</ins>" if y else ""}<span class="ghost">{x}</span></span>')
+    return "".join(left), "".join(right)
 
 
 def build(episode_id: str, video: bool = False, include_rejected: bool = False) -> Path:
     ep = episode.load(episode_id)
     srt = episode.srt(ep)
     flags = [f for f in flagstore.load(episode_id) if include_rejected or f["status"] != "rejected"]
-    flags.sort(key=lambda f: (SEVERITY_ORDER[f["severity"]], f["cue"]))
+    flags.sort(key=lambda f: (GRADE_ORDER[f["grade"]], f["cue"]))
     work = episode.path(episode_id, "x").parent
     clips = work / "clips"
     clips.mkdir(exist_ok=True)
@@ -100,7 +102,7 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
         clip_rel = clip_of.get(f["id"])
         cleanup = f.get("pass") == "cleanup"
         current = cue.text
-        left, right = _diff_html(f["draft"], f["proposed"]) if f.get("proposed") is not None else (html.escape(f["draft"]).replace("\n", "<br>"), "")
+        left, right = _diff_html(f["draft"], f["proposed"]) if f.get("proposed") is not None else (html.escape(f["draft"].replace("\n", "⏎")), "")
         ctx = []
         for p in range(max(1, f["cue"] - 1), min(len(srt.cues), f["cue"] + 1) + 1):
             if p != f["cue"]:
@@ -110,8 +112,8 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
                + (v.get("edge_after", "") and f"[{v['edge_after']}]") for k, v in ev.get("asr", {}).items()}
         items.append({
             "id": f["id"], "cue": f["cue"], "time": short_time(f["start"]),
-            "severity": f["severity"], "category": f["category"], "confidence": f["confidence"],
-            "status": f["status"], "draft_html": left, "proposed_html": right,
+            "grade": f["grade"], "category": f["category"], "reason": f.get("reason", ""),
+            "status": f["status"], "draft": f["draft"], "draft_html": left, "proposed_html": right,
             "proposed": f.get("proposed"), "alternatives": f.get("alternatives", []),
             "current_at": f"{short_time(cue.start)}–{short_time(cue.end)}",
             "proposed_cues": [{"at": f"{short_time(c['start'])}–{short_time(c['end'])}", "text": c["text"]}
@@ -120,7 +122,7 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
                                  and isinstance(f.get("applied_text"), str) else f["draft"])
                      and not (f["status"] == "applied" and f.get("proposed_cues")),
             "applied_text": f.get("applied_text") if isinstance(f.get("applied_text"), str) else None,
-            "evidence": f["evidence"], "note": f.get("note", ""),
+            "evidence": f["evidence"],
             "reference": refs.get(f["cue"], []), "asr": asr, "context": ctx, "clip": clip_rel,
             "cleanup": cleanup,
         })
@@ -165,10 +167,17 @@ button.primary { background:var(--accent); color:var(--bg); border-color:var(--a
 .card.accepted { border-left:4px solid var(--ins-fg); } .card.rejected { opacity:.55; }
 .head { display:flex; gap:8px; flex-wrap:wrap; align-items:baseline; font-size:13px; color:var(--muted); }
 .badge { font-size:12px; padding:1px 7px; border-radius:99px; border:1px solid currentColor; }
-.essential { color:var(--ess); } .suggested { color:var(--sug); } .query { color:var(--qry); }
+.fix { color:var(--ess); } .suggest { color:var(--sug); } .query { color:var(--qry); } .keep { color:var(--muted); }
+.reason { font-size:14px; margin:8px 0 2px; } .reason b { color:var(--accent); }
+details.kept > summary { cursor:pointer; font-size:16px; font-weight:600; margin:32px 0 10px; }
 .text { font-size:19px; margin:8px 0 2px; } .label { color:var(--muted); font-size:12px; margin-right:6px; }
 del { background:var(--del); color:var(--del-fg); text-decoration:line-through; }
 ins { background:var(--ins); color:var(--ins-fg); text-decoration:none; }
+.pair { display:grid; grid-template-columns:5.5em 1fr; column-gap:6px; align-items:baseline; margin:8px 0 2px; }
+.pair .label { margin:0; } .pair .line { font-size:19px; white-space:pre; overflow-x:auto; }
+.row .pair .line { font-size:16px; }
+.seg { display:inline-grid; } .seg > * { grid-area:1 / 1; } .ghost { visibility:hidden; }
+.ref { font-size:15px; margin:8px 0 2px; } .ref .note { color:var(--fg); font-size:13px; margin-left:5.5em; }
 .ev { font-size:13px; margin:8px 0 0; padding-left:18px; } .ev li { margin:2px 0; }
 .small { font-size:13px; color:var(--muted); } audio, video { width:100%; max-width:480px; margin-top:8px; }
 .actions { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; align-items:center; }
@@ -184,7 +193,7 @@ textarea { width:100%; font:inherit; font-size:16px; margin-top:6px; padding:6px
 <div class="meta" id="meta"></div>
 <div class="bar">
   <select id="filter"><option value="">All categories</option></select>
-  <button id="acceptEss">Accept all essential</button>
+  <button id="acceptEss">Accept all fixes</button>
   <button class="primary" id="export">Export decisions</button>
   <span class="small" id="count"></span>
 </div>
@@ -205,20 +214,57 @@ document.getElementById('meta').innerHTML =
 const cats = [...new Set(D.items.map(i => i.category))];
 const sel = document.getElementById('filter');
 cats.forEach(c => sel.insertAdjacentHTML('beforeend', `<option>${c}</option>`));
-const groups = [['essential','Essential corrections'],['suggested','Suggested'],['query','Queries (no confident fix)'],
-  ['cleanup','Cleanup pass (text only, already applied)']];
-const inGroup = (i, g) => g === 'cleanup' ? (i.cleanup && i.status === 'applied') : (i.severity === g && !(i.cleanup && i.status === 'applied'));
+const groups = [['fix','Fixes'],['suggest','Suggestions (you decide)'],['query','Queries (no confident fix)'],
+  ['cleanup','Cleanup pass (text only, already applied)'],['keep','Checked and kept']];
+const inGroup = (i, g) => g === 'cleanup' ? (i.cleanup && i.status === 'applied') : (i.grade === g && !(i.cleanup && i.status === 'applied'));
+const reason = it => it.reason ? `<div class="reason"><b>Reason:</b> ${esc(it.reason)}</div>` : '';
+const player = it => it.clip ? (D.meta.video ? `<video controls preload="none" src="${it.clip}"></video>` : `<audio controls preload="none" src="${it.clip}"></audio>`) : '';
+// Draft and proposal in one grid, so the two texts start at the same point and (with the
+// padded diff cells) line up character for character.
+const pair = (l1, t1, l2, t2) => `<div class="pair"><span class="label">${l1}</span><span class="line">${t1}</span>` +
+  (t2 != null ? `<span class="label">${l2}</span><span class="line">${t2}</span>` : '') + '</div>';
+// The reference, shown once and clearly: the line placed on this cue, plus what the agent
+// cited from it when that differs (it may have used a neighbouring line).
+const refBlock = it => {
+  const lines = it.reference.map(r => `<div><span class="label">Reference</span>${esc(r)}</div>`).join('');
+  const notes = it.evidence.filter(e => e.source === 'reference' && !it.reference.includes(e.detail))
+    .map(e => `<div class="note">${esc(e.detail)}</div>`).join('');
+  return lines || notes ? `<div class="ref">${lines || '<div><span class="label">Reference</span>—</div>'}${notes}</div>` : '';
+};
+// What the recognisers heard (greyed): the stored ASR lines and any re-listening.
+const heard = it => Object.entries(it.asr).map(([k, v]) => `<div class="small"><span class="label">ASR ${k}</span>${esc(v)}</div>`).join('') +
+  it.evidence.filter(e => e.source === 'listen').map(e => `<div class="small"><span class="label">re-listen</span>${esc(e.detail)}</div>`).join('');
+// The remaining evidence: what is not already shown above. CTC scores are left out (hard to read).
+const SHOWN = ['reference', 'asr_ft', 'asr_qwen', 'listen', 'ctc'];
+const otherEv = it => it.evidence.filter(e => !SHOWN.includes(e.source));
+function keepRow(it) {
+  const d = dec[it.id] || {};
+  const text = d.text !== undefined ? d.text : it.draft;
+  return `<div class="card row ${d.decision || ''}" data-id="${it.id}" data-cat="${it.category}">
+    <div class="head"><b>#${it.id}</b> cue ${it.cue} · ${it.time} <span class="badge keep">kept</span></div>
+    ${pair('draft', it.draft_html)}
+    ${reason(it)}
+    ${refBlock(it)}${heard(it)}
+    ${player(it)}
+    <div class="actions">
+      <button data-act="accept">${d.decision === 'accepted' ? '✓ Correct to my text' : 'Correct to my text'}</button>
+      <button data-act="clear">Leave it</button>
+      <textarea rows="1" style="flex:1;min-width:200px;margin:0">${esc(text).replace(/\n/g,'⏎')}</textarea>
+    </div>
+  </div>`;
+}
 function row(it) {
   const d = dec[it.id] || {};
-  const ev = it.evidence.map(e => esc(e.source === 'context' ? e.detail : `${e.source}: ${e.detail}`)).join(' · ');
+  const ev = otherEv(it).map(e => esc(e.source === 'context' ? e.detail : `${e.source}: ${e.detail}`)).join(' · ');
   const text = d.text !== undefined ? d.text : (it.applied_text || it.proposed || '');
   return `<div class="card row ${d.decision || ''}" data-id="${it.id}" data-cat="${it.category}">
     <div class="head"><b>#${it.id}</b> cue ${it.cue} · ${it.time} <span class="badge">${it.category}</span>
       ${it.stale ? '<span class="warn">changed since</span>' : ''}</div>
-    <div><span class="label">was</span>${it.draft_html}</div>
-    <div><span class="label">now</span>${it.proposed_html}</div>
+    ${pair('was', it.draft_html, 'now', it.proposed_html)}
+    ${reason(it)}
+    ${refBlock(it)}
     ${ev ? `<div class="small">${ev}</div>` : ''}
-    ${it.clip ? (D.meta.video ? `<video controls preload="none" src="${it.clip}"></video>` : `<audio controls preload="none" src="${it.clip}"></audio>`) : ''}
+    ${player(it)}
     <div class="actions">
       <button data-act="reject">${d.decision === 'rejected' ? '✗ Undone' : 'Undo'}</button>
       <button data-act="accept">${d.decision === 'accepted' ? '✓ Use my text' : 'Use my text'}</button>
@@ -229,30 +275,31 @@ function row(it) {
 }
 function card(it) {
   if (it.cleanup && it.status === 'applied') return row(it);
+  if (it.grade === 'keep') return keepRow(it);
   const d = dec[it.id] || {};
   const media = it.clip ? (D.meta.video ? `<video controls preload="none" src="${it.clip}"></video>` : `<audio controls preload="none" src="${it.clip}"></audio>`) : '<div class="small">no clip</div>';
-  const ev = it.evidence.map(e => `<li><b>${esc(e.source)}</b>: ${esc(e.detail)}</li>`).join('');
-  const asr = Object.entries(it.asr).map(([k,v]) => `<div class="small"><span class="label">ASR ${k}</span>${esc(v)}</div>`).join('');
-  const ref = it.reference.map(r => `<div class="small"><span class="label">Reference</span>${esc(r)}</div>`).join('');
+  const ev = otherEv(it).map(e => `<li><b>${esc(e.source)}</b>: ${esc(e.detail)}</li>`).join('');
   const ctx = it.context.map(c => `<div class="small"><span class="label">cue ${c.pos}</span>${esc(c.text)}</div>`).join('');
   const structural = it.proposed_cues.length > 0;
+  const texts = structural || it.proposed === null ? pair('draft', it.draft_html)
+    : pair('draft', it.draft_html, 'proposed', it.proposed_html);
   const prop = structural
     ? `<div class="small"><span class="label">now</span>${it.current_at}</div>` +
       `<div class="text"><span class="label">${it.proposed_cues.length > 1 ? 'split into' : 'retime to'}</span></div>` +
       it.proposed_cues.map(c => `<div class="text" style="font-size:16px"><span class="label">${c.at}</span>${esc(c.text).replace(/\n/g,'<br>')}</div>`).join('')
-    : (it.proposed !== null ? `<div class="text"><span class="label">proposed</span>${it.proposed_html}</div>` : '');
+    : '';
   const alts = it.alternatives.length ? `<div class="small"><span class="label">alternatives</span>${it.alternatives.map(esc).join(' · ')}</div>` : '';
-  const text = d.text !== undefined ? d.text : (it.applied_text || it.proposed || '');
+  const text = d.text !== undefined ? d.text : (it.applied_text || it.proposed || it.alternatives[0] || '');
   return `<div class="card ${d.decision || ''}" data-id="${it.id}" data-cat="${it.category}">
     <div class="head"><b>#${it.id}</b> cue ${it.cue} · ${it.time}
-      <span class="badge ${it.severity}">${it.severity}</span><span class="badge">${it.category}</span>
-      <span class="badge">${it.confidence}</span>${it.status !== 'open' ? `<span class="badge">${it.status}</span>` : ''}</div>
+      <span class="badge ${it.grade}">${it.grade}</span><span class="badge">${it.category}</span>
+      ${it.status !== 'open' ? `<span class="badge">${it.status}</span>` : ''}</div>
     ${it.stale ? '<div class="warn">The cue text has changed since this flag was made.</div>' : ''}
     ${it.status === 'applied' && !structural ? '<div class="small">Already applied to the subtitles: Reject undoes it, Accept with edited text replaces it.</div>' : ''}
-    <div class="text"><span class="label">draft</span>${it.draft_html}</div>${prop}${alts}
-    ${ref}${asr}${ctx}
-    ${it.note ? `<div class="small" style="margin-top:6px">${esc(it.note)}</div>` : ''}
-    <ul class="ev">${ev}</ul>${media}
+    ${texts}${prop}${alts}
+    ${reason(it)}
+    ${refBlock(it)}${heard(it)}${ctx}
+    ${ev ? `<ul class="ev">${ev}</ul>` : ''}${media}
     <div class="actions">
       <button data-act="accept">${d.decision === 'accepted' ? '✓ Accepted' : 'Accept'}</button>
       <button data-act="reject">${d.decision === 'rejected' ? '✗ Rejected' : 'Reject'}</button>
@@ -264,9 +311,11 @@ function card(it) {
 }
 function render() {
   const f = sel.value, list = document.getElementById('list');
-  list.innerHTML = groups.map(([sev, title]) => {
-    const its = D.items.filter(i => inGroup(i, sev) && (!f || i.category === f));
-    return its.length ? `<h2>${title} (${its.length})</h2>` + its.map(card).join('') : '';
+  list.innerHTML = groups.map(([g, title]) => {
+    const its = D.items.filter(i => inGroup(i, g) && (!f || i.category === f));
+    if (!its.length) return '';
+    if (g === 'keep') return `<details class="kept"><summary>${title} (${its.length})</summary>` + its.map(card).join('') + '</details>';
+    return `<h2>${title} (${its.length})</h2>` + its.map(card).join('');
   }).join('') || '<p>No flags.</p>';
   updateCount();
 }
@@ -290,7 +339,7 @@ document.getElementById('list').addEventListener('input', e => {
 });
 sel.addEventListener('change', render);
 document.getElementById('acceptEss').addEventListener('click', () => {
-  D.items.filter(i => i.severity === 'essential' && i.proposed !== null && !dec[i.id])
+  D.items.filter(i => i.grade === 'fix' && i.proposed !== null && i.status !== 'applied' && !dec[i.id])
     .forEach(i => dec[i.id] = { decision: 'accepted', text: i.proposed });
   save(); render();
 });

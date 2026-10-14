@@ -39,7 +39,7 @@ def test_prune_removes_bulk_and_keeps_records(workspace):
 def test_finished_means_no_open_flags_or_exported(workspace):
     from ccp import episode
     ep = episode.load(workspace["id"])
-    f = flags.add(workspace["id"], 2, "mishearing", "essential", "high", "阿媽實囉囉攣瞓唔着㗎", ["context: t"])
+    f = flags.add(workspace["id"], 2, "mishearing", "fix", "阿媽實囉囉攣瞓唔着㗎", ["context: t"], "the draft does not fit the scene; test reason")
     assert not prune.finished(ep, flags.load(workspace["id"]))
     flags.update(workspace["id"], f["id"], status="applied")
     assert prune.finished(ep, flags.load(workspace["id"]))

@@ -103,9 +103,9 @@ def main() -> None:
     def table(title, counter, n):
         rows = counter.most_common(n)
         if args.markdown:
-            print(f"\n**{title}** ({sum(counter.values())} changes)\n\n| pair | count |\n|---|---|")
-            for k, v in rows:
-                print(f"| {' ↔ '.join(k)} | {v} |")
+            # One compact line per list (pair count · pair count …): what sound-alikes.md holds.
+            print(f"\n**{title}** ({sum(counter.values())} changes)\n")
+            print(" · ".join(f"{' ↔ '.join(k)} {v}" for k, v in rows))
         else:
             print(f"\n{title} ({sum(counter.values())} changes)")
             for k, v in rows:

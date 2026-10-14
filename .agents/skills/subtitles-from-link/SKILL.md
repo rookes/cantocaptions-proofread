@@ -37,11 +37,9 @@ can review.
      source of an edit.
 4. **Full pass, only if the user asked** for a thorough or full proofread, or finished
    quality: realign the cleaned draft and proofread it with audio evidence, as described in
-   `clean-draft` → "Full pass". Particle flags and queries stay unapplied for the user to judge.
-   After the full pass, apply your corrections with
-   `uv run ccp apply <id> --min-severity suggested --min-confidence medium`. The draft is a
-   workspace copy and the original ASR is kept, so this is safe without asking. Retimes and
-   splits only if the user asked (see the proofread skill). Queries stay unapplied either way.
+   `clean-draft` → "Full pass". Then apply with `uv run ccp apply <id> --include-suggest`: the
+   draft is a workspace copy and the original ASR is kept, so this is safe without asking.
+   Queries and particle records stay for the user to judge; retimes and splits only if asked.
 5. **Report and export.** `uv run ccp report <id>`, then `uv run ccp export <id>`. Give the user:
    - the path of the final subtitles (`<title>.yue.srt`);
    - the folder, which also holds `<title>.asr.yue.srt` (the original ASR),
@@ -58,11 +56,9 @@ can review.
 
 ## If the user wants to review
 
-The report (`report.html` in the export folder or the workspace) lists the cleanup edits as
-compact rows (**Undo**, or **Use my text** after editing the box) and every other flag as a
-card with an audio clip. On a card for a correction you already applied, **Reject** undoes it
-and **Accept** with edited text replaces it with the user's wording. Open flags can be accepted
-or rejected as usual. When the user gives you the exported `decisions.json`:
+The report (`report.html` in the export folder or the workspace) is described in
+`proofread-subtitles/references/report-and-apply.md`. When the user gives you the exported
+`decisions.json`:
 1. `uv run ccp apply <id> --decisions <path>`
 2. `uv run ccp report <id>`, then `uv run ccp export <id>` again (it overwrites the folder with the
    current state)
