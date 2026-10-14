@@ -1,0 +1,172 @@
+# Jyutping confusion costs for `ccp sounds-like`. 0 = sounds the same, 1 = unrelated.
+#
+# A syllable substitution costs  initial_weight * c_initial + final_weight * c_final
+# + tone_weight * c_tone, so an identical syllable costs 0 and a completely different
+# one costs 1. Listed sets give every pair inside the set the stated cost; pairs not
+# listed fall back to the [fallback] rules, then to 1.0.
+#
+# Seeded from the maintainer's sound-alike list in
+# .agents/skills/investigate-line/references/sound-alikes.md, then adjusted where
+# scripts/measure_confusions.py (2026-10-11: 1,092 one-syllable substitutions by the two
+# recognisers over 3 strict episodes) showed a pair to be clearly more or less common.
+# Entries marked "measured" were added or changed from that run. Re-measure before changing.
+
+[weights]
+initial = 0.35
+final = 0.40
+tone = 0.25
+indel = 1.0          # inserting or deleting a whole syllable
+skip = 0.15          # skipping a query syllable at either end (query span wider than the word)
+
+# ---- initials ("" = no initial) ---------------------------------------------------------
+[[initial]]
+set = ["n", "l"]
+cost = 0.1
+[[initial]]
+set = ["ng", ""]
+cost = 0.1
+[[initial]]
+set = ["c", "z", "s"]
+cost = 0.35
+[[initial]]
+set = ["d", "t"]
+cost = 0.3
+[[initial]]
+set = ["m", "n"]
+cost = 0.4
+[[initial]]
+set = ["g", "gw"]
+cost = 0.3
+[[initial]]
+set = ["k", "kw"]
+cost = 0.3
+[[initial]]
+set = ["g", "k"]
+cost = 0.4
+[[initial]]
+set = ["b", "p"]
+cost = 0.4
+[[initial]]
+set = ["h", "f"]
+cost = 0.5
+[[initial]]
+set = ["j", ""]
+cost = 0.4
+[[initial]]
+set = ["w", ""]
+cost = 0.4
+[[initial]]
+set = ["d", "l"]
+cost = 0.6
+[[initial]]               # measured: 2nd commonest initial pair
+set = ["d", "z"]
+cost = 0.5
+[[initial]]               # measured: dropped h is common
+set = ["h", ""]
+cost = 0.35
+[[initial]]               # measured
+set = ["j", "z"]
+cost = 0.5
+[[initial]]               # measured
+set = ["b", "f"]
+cost = 0.6
+[[initial]]               # measured
+set = ["ng", "w"]
+cost = 0.6
+[[initial]]               # measured
+set = ["g", "ng"]
+cost = 0.6
+[[initial]]
+set = ["t", "l"]
+cost = 0.7
+
+# ---- finals ------------------------------------------------------------------------------
+[[final]]
+set = ["ok", "o", "ou"]
+cost = 0.3
+[[final]]
+set = ["yu", "yun"]
+cost = 0.3
+[[final]]
+set = ["ik", "ek", "ak", "at", "eot"]
+cost = 0.35
+[[final]]
+set = ["ip", "it"]
+cost = 0.3
+[[final]]
+set = ["ak", "ap", "at"]
+cost = 0.3
+[[final]]
+set = ["aak", "aap", "aat"]
+cost = 0.3
+[[final]]
+set = ["an", "ang"]
+cost = 0.3
+[[final]]
+set = ["aan", "aang"]
+cost = 0.3
+[[final]]
+set = ["on", "ong"]
+cost = 0.3
+[[final]]
+set = ["m", "ng"]          # syllabic nasals: 唔 m4 / 吳 ng4
+cost = 0.15
+[[final]]                  # measured: k/ng codas after the same vowel
+set = ["ik", "ing"]
+cost = 0.4
+[[final]]
+set = ["uk", "ung"]
+cost = 0.4
+[[final]]
+set = ["ak", "ang"]
+cost = 0.4
+[[final]]                  # measured
+set = ["au", "ou"]
+cost = 0.5
+[[final]]                  # measured
+set = ["ei", "eoi"]
+cost = 0.5
+[[final]]                  # measured
+set = ["ai", "ei"]
+cost = 0.5
+
+[fallback]
+a_aa = 0.3                  # finals that differ only by a <-> aa (am/aam, ak/aak)
+same_nucleus_stop = 0.45    # same vowel, both stop codas (p/t/k)
+same_nucleus_nasal = 0.45   # same vowel, both nasal codas (m/n/ng)
+same_nucleus = 0.6          # same vowel, otherwise
+
+# ---- tones -------------------------------------------------------------------------------
+[[tone]]
+set = ["3", "6"]
+cost = 0.2
+[[tone]]                   # measured: nearly as common as 3/6
+set = ["1", "3"]
+cost = 0.3
+[[tone]]
+set = ["2", "4"]
+cost = 0.5
+[[tone]]                   # measured
+set = ["2", "5"]
+cost = 0.35
+[[tone]]                   # measured
+set = ["5", "6"]
+cost = 0.35
+[[tone]]                   # measured
+set = ["4", "6"]
+cost = 0.4
+[[tone]]                   # measured
+set = ["2", "6"]
+cost = 0.4
+[[tone]]                   # measured
+set = ["1", "6"]
+cost = 0.6
+[[tone]]                   # measured
+set = ["2", "3"]
+cost = 0.6
+[[tone]]                   # measured
+set = ["1", "2"]
+cost = 0.6
+[[tone]]
+set = ["4", "5"]
+cost = 0.6

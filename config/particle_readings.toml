@@ -1,0 +1,55 @@
+# CantoCaptions writes each sentence-final particle as the one character that matches its
+# syllable and tone (README "Sentence Final Particles"). These readings are therefore fixed
+# by convention and always listed first by `ccp jp` / sounds-like, whatever other readings
+# words.hk records for the same character.
+[readings]
+"吖" = "aa1"
+"嗄" = "aa2"
+"啊" = "aa3"
+"呀" = "aa4"
+"咓" = "aa5"
+"𠻺" = "aa6"
+"𠺢" = "gaa1"
+"𠿪" = "gaa2"
+"㗎" = "gaa3"
+"嘎" = "gaa4"
+"㗇" = "gaa5"
+"噶" = "gaa6"
+"𠸏" = "ge2"
+"嘅" = "ge3"
+"啦" = "laa1"
+"𠸎" = "laa2"
+"喇" = "laa3"
+"嗱" = "laa4"
+"嚹" = "laa6"
+"嘞" = "laak3"
+"囖" = "lo1"
+"咯" = "lo3"
+"囉" = "lo4"
+"喎" = "wo3"
+"啝" = "wo4"
+"𡁜" = "wo5"
+"吒" = "zaa1"
+"咋" = "zaa3"
+"喳" = "zaa4"
+"𠾵" = "zaa5"
+"咤" = "zaa6"
+"𠻹" = "tim1"
+"啫" = "ze1"
+"唧" = "zek1"
+"噉" = "gam2"
+"咁" = "gam3"
+"啩" = "gwaa3"
+"嗬" = "ho2"
+"咩" = "me1"
+"嘛" = "maa3"
+"嗎" = "maa5"
+
+# Characters CantoCaptions reserves for exactly these readings, so no other reading words.hk
+# records for them applies (README: 噉 gam2 vs 咁 gam3 are different words, told apart by
+# sound; 着 zoek vs 著 zyu3 likewise).
+[exclusive]
+"噉" = ["gam2"]
+"咁" = ["gam3"]
+"著" = ["zyu3"]
+"着" = ["zoek6", "zoek3", "zoek2"]

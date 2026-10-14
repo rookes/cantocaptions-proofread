@@ -1,0 +1,2 @@
+[console_scripts]
+ccp = ccp.cli:main

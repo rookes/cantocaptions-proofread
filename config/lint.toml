@@ -1,0 +1,94 @@
+# Settings for `ccp lint`. The bulk of the variant rules is read at run time from
+# cantocaptions-dataset/rules/standardization.toml so the two never drift; this file
+# only adjusts it and adds what that file does not cover.
+
+# standardization.toml entries to ignore (by their `nonstandard` form).
+# 牀: the dataset maps 牀->床 as a heuristic, but the CantoCaptions README requires 牀.
+skip_variants = ["牀"]
+
+# Words a variant rule must not touch: an occurrence of a nonstandard form that overlaps
+# one of these is not a hit (果啲 in 如果啲 is 如果 + 啲; 啤啤熊 is the teddy bear's name;
+# 隔離 in 被隔離 is "quarantine", not 隔籬; 唔洗衫 is "not washing clothes", not 唔使). Chosen from a survey of the library's variant
+# hits; add to it when a mechanical fix turns out wrong.
+protect = ["如果", "結果", "效果", "後果", "成果", "水果", "生果", "蘋果", "糖果",
+           "地方", "地區", "地址", "地點", "地圖",
+           "被隔離", "自我隔離", "隔離病", "隔離檢", "隔離措施", "啤啤熊",
+           "洗衫", "洗碗", "洗澡", "洗頭", "洗面", "洗手", "洗身", "洗牙", "洗車", "洗腳",
+           "洗地", "洗錢", "洗米", "洗菜", "洗乾淨", "洗白"]
+
+# Variant rules that are right only in some uses: shown as a query for the reviewer, never
+# fixed mechanically by `ccp clean --lint`. 洗 is also "wash" (底褲唔洗); 你倆 wants a
+# rewording (你哋兩個), not 你兩.
+query_variants = ["唔洗", "唔駛", "倆"]
+
+# Extra 1:1 conventions from the CantoCaptions README not in standardization.toml.
+[[extra_variants]]
+nonstandard = "床"
+standard = "牀"
+[[extra_variants]]
+nonstandard = "啤啤"
+standard = "BB"
+[[extra_variants]]
+nonstandard = "她"
+standard = "他"
+note = "README: 她 is not used; 他 covers both (spoken Cantonese is usually 佢)"
+
+# Standard Written Chinese words that colloquial Cantonese writes another way. A hit is a
+# question for the reviewer, never an automatic fix: some occur inside real Cantonese
+# words, which the exceptions remove.
+[[swc]]
+form = "的"
+cantonese = "嘅"
+exceptions = ["的士", "的確", "目的", "的而且確", "的骰", "有的放矢", "的式", "的士高", "標的", "眾矢之的"]
+[[swc]]
+form = "這"
+cantonese = "呢"
+exceptions = []
+[[swc]]
+form = "那"
+cantonese = "嗰"
+exceptions = ["刹那", "剎那", "支那", "那不勒斯", "那打素", "哪吒"]
+[[swc]]
+form = "甚麼"
+cantonese = "乜嘢／咩"
+exceptions = []
+[[swc]]
+form = "什麼"
+cantonese = "乜嘢／咩"
+exceptions = []
+[[swc]]
+form = "沒"
+cantonese = "冇"
+exceptions = ["沒收", "沉沒", "埋沒", "出沒", "沒落", "淹沒", "沒趣", "神出鬼沒", "沒頂", "吞沒", "隱沒", "覆沒", "湮沒"]
+[[swc]]
+form = "很"
+cantonese = "好"
+exceptions = []
+[[swc]]
+form = "們"
+cantonese = "哋"
+exceptions = ["人們", "哥兒們"]
+[[swc]]
+form = "吃"
+cantonese = "食"
+exceptions = ["吃虧", "吃力", "吃驚", "口吃", "吃香", "吃緊", "吃重", "吃苦"]
+[[swc]]
+form = "誰"
+cantonese = "邊個"
+exceptions = []
+[[swc]]
+form = "哪"
+cantonese = "邊"
+exceptions = ["哪吒"]
+[[swc]]
+form = "怎"
+cantonese = "點"
+exceptions = []
+[[swc]]
+form = "看"
+cantonese = "睇"
+exceptions = ["看法", "看守", "看護", "看待", "看重", "看齊", "看似", "看來", "看好", "好看", "難看", "看中", "看破", "看透", "看不起", "看門", "看更", "看管", "觀看", "查看", "看台", "收看", "小看", "看見", "看相", "看錯"]
+
+[limits]
+line_width = 17.5        # CJK counts 1, half-width 0.5 (CantoCaptions README)
+minority_min_majority = 2  # a spelling must appear this often to outvote another

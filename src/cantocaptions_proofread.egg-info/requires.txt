@@ -1,0 +1,3 @@
+numpy>=1.26
+yt-dlp[default]>=2026.8.19
+pycantonese>=3.4.0

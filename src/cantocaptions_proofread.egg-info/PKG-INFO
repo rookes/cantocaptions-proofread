@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: cantocaptions-proofread
+Version: 0.1.0
+Summary: Tools and agent skills for proofreading CantoCaptions written-Cantonese subtitles
+Requires-Python: <3.13,>=3.12
+Requires-Dist: numpy>=1.26
+Requires-Dist: yt-dlp[default]>=2026.8.19
+Requires-Dist: pycantonese>=3.4.0
