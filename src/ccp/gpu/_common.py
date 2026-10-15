@@ -48,15 +48,24 @@ def load_media_audio(media: str, track: int, start: float | None = None, end: fl
     return load_audio(media, audio_track=track, audio_start=start, audio_end=end)
 
 
-def asr_texts(tag: str, clips: list) -> list[str]:
-    """Transcribe each 16 kHz mono clip with one model; returns texts in order."""
+def load_asr(tag: str):
     from cantocaptions_ai.pipeline.asr import load_model
-    stage = load_model(ASR_MODELS[tag], DEVICE, language="yue")
+    return load_model(ASR_MODELS[tag], DEVICE, language="yue")
+
+
+def asr_texts(tag: str, clips: list, stage=None) -> list[str]:
+    """Transcribe each 16 kHz mono clip with one model; returns texts in order. With *stage*
+    (an ASR model the GPU server keeps loaded) it is used and kept; otherwise the model is
+    loaded for this call and unloaded after it."""
+    own = stage is None
+    if own:
+        stage = load_asr(tag)
     segs = [{"start": 0.0, "end": len(c) / SAMPLE_RATE, "audio": c} for c in clips]
     out = stage.process(segs)["segments"]
     texts = [s.get("text", "") for s in out]
-    del stage
-    free()
+    if own:
+        del stage
+        free()
     return texts
 
 

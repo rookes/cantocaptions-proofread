@@ -28,8 +28,9 @@ meaning. It never decides **what** was meant. So:
 
 `score` reads the aligner output that `ccp evidence` stored, so it takes about a second. Several
 cues at once: `--batch FILE` (a JSON list of `{"cue": N, "candidates": ["full text", ...]}`).
-`--pad`, an unusual character, or a workspace without stored output forces a GPU run
-(20–40 s, `scored_on: gpu`). `listen` always uses the GPU.
+`--pad` widens the span within the stored audio of the cue's group (`span` in the result says
+when it had to stop at the group's edge). `listen` uses the GPU, through a server that keeps
+the recognisers loaded for the pass: the first call takes about a minute, later ones seconds.
 
 ### Reading a score
 

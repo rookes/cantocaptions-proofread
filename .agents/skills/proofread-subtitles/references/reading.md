@@ -7,12 +7,13 @@
 
 - `37|阿媽食多都亂瞓唔着㗎  @3:21.5`: cue 37 (its position in the file), its text (`⏎` = line break), start time
 - `{an8}` after the text: an overlapping background line shown at the top of the screen
+- `⟨markup: <font color=…>⟩` after the text: the cue holds markup the text above hides (colours on song lyrics, for instance); `ccp cue` shows where. Edits keep a colour that wraps a whole line.
 - `R …`: the reference line that overlaps this cue most: what the line means
 - `≠ft …`: the fine-tuned recogniser heard different *content*
 - `≠qw …`: stock Qwen3-ASR heard different content
 - `[你]` inside an ASR line: heard in the padding just outside the cue: a word the cue may be missing, or the neighbour's
 - `! 多 0.00  都 0.00`: weak characters: the aligner hears little of them where the draft puts them (shown only beside a recogniser that differs)
-- `L kind found→suggestion`: a lint hit
+- `L kind found→suggestion`: a lint hit (`L invisible U+200B …`: an invisible character; propose the cue's text as shown to remove it)
 - `T …`: realign doubts this cue's timing
 - `F#3 fix/mishearing/open → …`: a record you already made
 - `--` / `==`: a pause of 1–3 s / 3 s or more before the next cue
@@ -29,6 +30,8 @@ each group of cues (`G12 ft …`), for when a per-cue ASR line looks cut oddly a
 One block per cue: the draft with its Jyutping (and other readings), `R`, the neighbouring cues
 (`--context N` for more), then each recogniser marked `=` (same words) or `≠` (with its
 Jyutping), a `check` line when they differ, weak characters (peak < 0.3), lint and records.
+A `raw` line under the draft shows the cue as written when it holds markup or invisible
+characters (spelled out as `⟨U+200B⟩`).
 Ask for all your suspects in one call. `--json` gives the full structure.
 
 ## Glossary format (`glossaries/<show_slug>.md`)

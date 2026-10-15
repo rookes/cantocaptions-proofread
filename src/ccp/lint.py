@@ -14,7 +14,7 @@ from pathlib import Path
 
 from . import dictionary, jyutping, paths
 from .corpus import FINAL_PARTICLES
-from .srtio import RE_INVISIBLE, Cue, SrtFile
+from .srtio import RE_INVISIBLE, Cue, SrtFile, clean_text, invisible_name
 
 SENT_END = "，。？！…,.?!；;：:」』）)"
 
@@ -128,9 +128,10 @@ def check_cue(cue: Cue, glossary_avoid: dict[str, str] | None = None) -> list[di
         out.append(_hit(cue, "format", "'- ' speaker dash with a space", "-", "standard"))
     if re.search(r"</?i>", raw, re.I):
         out.append(_hit(cue, "format", "italics", "", "standard", "italics are never used"))
-    if RE_INVISIBLE.search(raw):
-        out.append(_hit(cue, "format", "invisible character", "", "standard",
-                        "zero-width or bidi control character in the text"))
+    for m in RE_INVISIBLE.finditer(raw):
+        before = clean_text(raw[:m.start()])[-1:] or "the start"
+        out.append(_hit(cue, "invisible", invisible_name(m.group()), "", "standard",
+                        f"after {before}: to remove it, propose the text as shown, or run `ccp clean --lint`"))
     width = cfg["limits"].get("line_width", 17.5)
     for line in text.split("\n"):
         if display_width(line) > width:

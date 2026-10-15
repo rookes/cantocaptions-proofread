@@ -64,9 +64,41 @@ class Cue:
     def an8(self) -> bool:
         return "{\\an8}" in self.raw
 
+    @property
+    def invisible(self) -> list[str]:
+        """Invisible characters in the cue (zero-width spaces, direction marks, BOMs)."""
+        return RE_INVISIBLE.findall(self.raw)
+
+    @property
+    def markup(self) -> list[str]:
+        """Tags other than the {\\an8}-style override at the start: <font …>, <i>, …"""
+        return [t for t in RE_TAG.findall(self.raw) if not t.startswith("{\\")]
+
+    @property
+    def shown(self) -> str | None:
+        """The cue as written, with invisible characters spelled out (⟨U+200B⟩) and markup
+        kept, or None when that is just the text. `text` hides both."""
+        if not (self.invisible or self.markup):
+            return None
+        return to_display(spell_invisible(re.sub(r"^(\{\\[^}]*\})+", "", self.raw)))
+
+
+def spell_invisible(s: str) -> str:
+    return RE_INVISIBLE.sub(lambda m: f"⟨U+{ord(m.group()):04X}⟩", s)
+
+
+def invisible_name(ch: str) -> str:
+    import unicodedata
+    return f"U+{ord(ch):04X} {unicodedata.name(ch, 'invisible character')}"
+
 
 def clean_text(raw: str) -> str:
     return RE_INVISIBLE.sub("", RE_TAG.sub("", html.unescape(raw))).strip()
+
+
+def clean_markup(raw: str) -> str:
+    """The text with its markup removed but any invisible characters still in place."""
+    return RE_TAG.sub("", html.unescape(raw)).strip()
 
 
 def to_display(text: str) -> str:
@@ -138,12 +170,19 @@ class SrtFile:
     def set_text(self, pos: int, new_text: str) -> None:
         """Replace a cue's text lines with *new_text* (\\n or ⏎ separates lines).
 
-        A leading override tag such as {\\an8} is carried over when the new text lacks it.
+        A leading override tag such as {\\an8} is carried over when the new text lacks it, and
+        so is a tag pair wrapping a whole line (`<font color="#ffff00">…</font>`, used for
+        song lyrics), line by line.
         """
         cue = self.cue(pos)
         new_lines = from_display(new_text).split("\n")
         old_first = cue.lines[0] if cue.lines else ""
         lead = re.match(r"^(\{\\[^}]*\})+", old_first)
+        for k, old in enumerate(cue.lines[:len(new_lines)]):
+            body = old[lead.end():] if k == 0 and lead else old
+            wrap = re.fullmatch(r"(<(\w+)[^>]*>)(.*)(</\2>)", body)
+            if wrap and not RE_TAG.search(new_lines[k]):
+                new_lines[k] = wrap.group(1) + new_lines[k] + wrap.group(4)
         if lead and not new_lines[0].startswith(lead.group(0)):
             new_lines[0] = lead.group(0) + new_lines[0]
         if not cue.text_line_idx:
@@ -159,6 +198,20 @@ class SrtFile:
         if delta:
             for later in self.cues[pos:]:
                 later.text_line_idx = [k + delta for k in later.text_line_idx]
+
+    def strip_invisible(self, pos: int) -> int:
+        """Remove invisible characters from a cue's lines, leaving its text and markup alone.
+        Returns how many were removed."""
+        cue = self.cue(pos)
+        n = 0
+        for k, idx in enumerate(cue.text_line_idx):
+            line, end = self.lines[idx]
+            clean, removed = RE_INVISIBLE.subn("", line)
+            if removed:
+                self.lines[idx] = [clean, end]
+                cue.lines[k] = clean
+                n += removed
+        return n
 
     def numbering(self) -> str:
         """'sequential' (1, 2, 3...), 'ms' (counter = start time in ms, the CantoCaptions

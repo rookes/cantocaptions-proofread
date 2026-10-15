@@ -87,9 +87,10 @@ class Table:
         lo = ch.lower()
         return lo in self.tokens or lo in self.unscorable
 
-    def ids(self, form: str) -> tuple[list[int], list[str], list[str]] | None:
-        """(ids, substitutions, unscorable) for the sound chars of *form*, or None if a
-        character is not in the table at all (the caller must fall back)."""
+    def ids(self, form: str) -> tuple[list[int], list[str], list[str]]:
+        """(ids, substitutions, unscorable) for the sound chars of *form*. A character the
+        table does not cover (it covers words.hk, every character with a reading, ASCII and
+        the episode's own text) counts as unscorable."""
         ids, used, missing = [], [], []
         for ch in form:
             if not is_sound(ch):
@@ -100,10 +101,8 @@ class Table:
                 ids.append(tid)
                 if note:
                     used.append(note)
-            elif lo in self.unscorable:
-                missing.append(lo)
             else:
-                return None
+                missing.append(lo)
         return ids, used, missing
 
     def phonetic(self, text: str) -> str:
@@ -224,19 +223,17 @@ class Store:
 
 
 def score_item(store: Store, start: float, end: float, draft: str, candidates: list[str]) -> dict | None:
-    """Same result shape as gpu/score.py's handle(); None if this item needs the GPU path."""
+    """Score the draft and *candidates* on the stored emission of [start, end]; None when no
+    stored group covers the span. A span reaching past its group is cut to the group's edges
+    (noted in the result): the stored audio already carries the group's padding."""
     lp = store.slice(start, end)
     if lp is None:
         return None
+    g = store.group_for(start, end)
+    clipped = start < g["start"] - 0.05 or end > g["end"] + 0.05
     tb = store.table
     nr = _numeral_readings()
     texts = [draft, *candidates]
-    for t in texts:
-        for reading in nr(t) or [t]:
-            if not all(tb.known(c) for c in tb.phonetic(reading) if is_sound(c)):
-                return None
-    if not all(tb.known(c) for c in draft if is_sound(c)):
-        return None
 
     scored = []
     base_key = None
@@ -295,6 +292,8 @@ def score_item(store: Store, start: float, end: float, draft: str, candidates: l
               "candidates": cands}
     if scored[0]["unscorable"]:
         result["draft_unscorable"] = scored[0]["unscorable"]
+    if clipped:
+        result["span"] = f"limited to the stored audio {g['start']:.2f}–{g['end']:.2f} s"
     if not result["reliable"]:
         result["warning"] = f"aligner barely hears this span (median peak {median:.2f}); ignore these deltas"
     return result

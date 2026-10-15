@@ -14,7 +14,7 @@ def _hits(text):
 @pytest.mark.parametrize("text, found, suggest", [
     ("咪喐", "喐", "郁"), ("我吿你", "吿", "告"), ("唔只係佢", "唔只", "唔止"),
     ("唔好意思，打搞晒", "打搞晒", "打攪晒"), ("唔駛驚", "唔駛", "唔使"), ("姖話", "姖", "佢"),
-    ("依個人", "依個", "呢個"), ("𠵱個人", "𠵱個", "呢個"),
+    ("𠵱個人", "𠵱個", "依個"),
 ])
 def test_mandatory_forms_are_flagged(text, found, suggest):
     assert (found, suggest, "standard") in _hits(text)
@@ -23,6 +23,7 @@ def test_mandatory_forms_are_flagged(text, found, suggest):
 def test_context_dependent_forms_are_queries():
     assert ("抖", "唞", "query") in _hits("早抖")
     assert ("攪", "搞", "query") in _hits("你攪錯咗")
+    assert ("依個", "呢個", "query") in _hits("依個人")              # right for ji1 go3
 
 
 def test_protected_words_are_left_alone():

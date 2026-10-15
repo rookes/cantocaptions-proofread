@@ -21,9 +21,10 @@ protect = ["如果", "結果", "效果", "後果", "成果", "水果", "生果",
 
 # Variant rules that are right only in some uses: shown as a query for the reviewer, never
 # fixed mechanically by `ccp clean --lint`. 洗 is also "wash" (底褲唔洗); 你倆 wants a
-# rewording (你哋兩個), not 你兩. (唔駛 is not here: the conventions require 唔使, and the
-# strict corpus never writes 唔駛.)
-query_variants = ["唔洗", "倆"]
+# rewording (你哋兩個), not 你兩. 依個 is right for ji1 go3 and 呢個 for ni1 go3: only the
+# sound decides. (唔駛 is not here: the conventions require 唔使, and the strict corpus never
+# writes 唔駛.)
+query_variants = ["唔洗", "倆", "依個"]
 
 # Extra 1:1 conventions from the CantoCaptions README not in standardization.toml.
 [[extra_variants]]
@@ -71,8 +72,8 @@ nonstandard = "姖"
 standard = "佢"
 [[extra_variants]]
 nonstandard = "𠵱個"
-standard = "呢個"
-note = "the README lists 依個 for ji1 go3, but the strict files write 呢個 throughout (依個 never appears)"
+standard = "依個"
+note = "依個 ji1 go3 (呢個 is ni1 go3)"
 [[extra_variants]]
 nonstandard = "爹啲"
 standard = "爹哋"

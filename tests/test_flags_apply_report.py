@@ -72,6 +72,16 @@ def test_report_builds_without_media(workspace):
     assert data["items"][0]["clip"] is None
 
 
+def test_diff_rows_copy_as_their_own_text():
+    """Each row's text nodes are exactly its own text: the padding that lines the rows up
+    lives in an attribute (drawn by CSS), so copying a row gives nothing extra."""
+    import re
+    left, right = report._diff_html("阿媽食多都亂瞓唔着㗎", "阿媽實囉囉攣瞓唔着㗎")
+    text = lambda h: re.sub(r"<[^>]*>", "", h)
+    assert text(left) == "阿媽食多都亂瞓唔着㗎" and text(right) == "阿媽實囉囉攣瞓唔着㗎"
+    assert 'data-w="實囉囉攣"' in left
+
+
 def test_cue_compact_output(workspace, capsys):
     from ccp import cli
     cli.main(["cue", workspace["id"], "2", "3", "--context", "0"])

@@ -101,17 +101,22 @@ GPU scorer (numeral readings, particle stripping, homophone canonicalisation) an
 forward pass. Each cue is scored on its frames sliced from the group's emission, so the model
 has heard the surrounding speech.
 
-Items that cannot be scored exactly from the stored data fall back to the one-shot GPU scorer
-(`src/ccp/gpu/score.py`) and are marked `scored_on: gpu (clip alone)`. That covers an explicit
-`--pad`/`--start`/`--end`, characters outside the token table, and workspaces from before
-emissions were stored (re-run `ccp evidence --force`).
-`scripts/compare_score_paths.py` checks the two paths against each other (numpy vs torch on
-identical input, and old per-clip vs new group-slice scoring) on the candidates in
-`tests/fixtures/score_cases.json`.
+Scoring never loads the aligner. An explicit `--pad`/`--start`/`--end` span is cut from the
+stored emission of the group around it (stopping at the group's edges, which already include
+its padding); a character outside the token table counts as unscorable; a workspace without
+stored emissions needs `ccp evidence --force` once. `scripts/compare_score_paths.py` checks the
+numpy scorer against the torch aligner (on identical input, and per-clip against group-slice
+scoring) on the candidates in `tests/fixtures/score_cases.json`.
 
-There is no resident GPU server. Agent harnesses end a command's whole process tree when the
-command returns, so a background server died after every call. `listen` and `evidence` load
-their models per call, which is fine for how rarely they run.
+`listen` runs in a GPU server (`src/ccp/gpu/server.py`) that keeps the recognisers loaded
+between calls: a pass loads each model once
+instead of once per call (a re-listen drops from 20–40 s to a few seconds). Agent harnesses end
+a command's whole process tree when the command returns, so `ccp` starts the server outside it,
+through WMI on Windows, with a hidden window. When the two recognisers do not fit on the card
+together, the server unloads the least recently used one to make room. It stops when a
+pass ends (`report`, `apply`, `export`, `publish`, `prune`), before other GPU work (`evidence`,
+`pipeline`, OCR), or after 15 minutes unused. `ccp status <id>` shows it (`gpu_server`); its log is
+`cache/gpu_server.log`. `CCP_GPU_SERVER=0` turns it off (each call then loads its own models).
 
 ## Tests
 

@@ -31,6 +31,7 @@ from pathlib import Path
 
 from . import apply as applier, episode, flags as flagstore, lint
 from .corpus import FINAL_PARTICLES
+from .srtio import invisible_name
 
 PUNCT = set("，。？！…,.?!；;：:、「」『』（）()\"'“”‘’-— \n")
 # Particle-character rules (compound_particle, particle_variant) are left to the agent: they
@@ -212,7 +213,7 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
             if c.pos in skip_lint:
                 continue
             fixed, _ = _lint_pass(c.text, c, avoid)
-            if fixed != c.text:
+            if fixed != c.text or c.invisible:
                 lint_cues.add(c.pos)
     planned, queries, particles, particle_words, held = [], [], [], [], []
     for pos in sorted(set(by_cue) | lint_cues):
@@ -234,10 +235,13 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
             particle_words.append(f"cue {pos}: " + "; ".join(as_words))
         text, fixes = (_lint_pass(agent_text, c, avoid) if use_lint and pos not in skip_lint
                        else (agent_text, []))
-        if text == c.text:
+        if use_lint and pos not in skip_lint and c.invisible:
+            fixes = fixes + [f"invisible {invisible_name(ch)} removed" for ch in c.invisible]
+        elif text == c.text:
             continue
         lint_only = _lint_pass(c.text, c, avoid)[0]
-        category = (e or {}).get("category") or _category(c.text, text, lint_only)
+        category = (e or {}).get("category") or ("standard" if text == c.text
+                                                  else _category(c.text, text, lint_only))
         evidence = [e["why"]] if e and e["why"].split(":", 1)[0].strip() in flagstore.SOURCES else []
         evidence += [f"lint: {x}" for x in fixes]
         reason = e["why"] if e else "convention: " + "; ".join(fixes)

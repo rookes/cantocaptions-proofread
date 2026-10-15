@@ -20,7 +20,7 @@ import json
 from datetime import datetime, timezone
 
 from . import episode
-from .srtio import from_display
+from .srtio import clean_markup, from_display, spell_invisible
 
 CATEGORIES = ["mishearing", "standard", "particle", "punctuation", "name", "missing", "extra",
               "segmentation", "timing", "other"]
@@ -94,7 +94,7 @@ def validate(flag: dict, n_cues: int) -> None:
             raise ValueError(f"{key} must be one of {allowed}, got {flag.get(key)!r}")
     has_text = flag.get("proposed") is not None
     pc = flag.get("proposed_cues")
-    if has_text and flag["proposed"] == flag.get("draft"):
+    if has_text and flag["proposed"] == flag.get("draft") and not flag.get("strip_invisible"):
         raise ValueError("proposed text is identical to the draft: record a keep instead")
     if flag["grade"] in ("fix", "suggest") and not (has_text or pc):
         raise ValueError(f"a {flag['grade']} needs a proposed text (or proposed cues); with no "
@@ -144,6 +144,9 @@ def add(episode_id: str, cue: int, category: str, grade: str, proposed: str | No
         "proposed": prop,
         "alternatives": [from_display(a) for a in alternatives],
         "category": category, "grade": grade,
+        # Proposing a cue's visible text when it holds invisible characters means: remove them.
+        **({"strip_invisible": True, "draft_shown": spell_invisible(clean_markup(c.raw))}
+           if c.invisible and prop == c.text else {}),
         "reason": check_reason(reason, prop, c.text),
         "evidence": _parse_evidence(evidence),
         "status": "kept" if grade == "keep" else "open",

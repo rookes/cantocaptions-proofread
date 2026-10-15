@@ -134,8 +134,14 @@ def apply(episode_id: str, decisions: Path | None = None, include_suggest: bool 
             applied.append({"flag": f["id"], "cue": f["cue"], "from": f["draft"],
                             "to": [f"{c['start']:.3f}-{c['end']:.3f} {c['text']}" for c in f["proposed_cues"]]})
         else:
+            # Invisible characters (a zero-width space...) go without touching the markup.
+            stripped = srt.strip_invisible(f["cue"]) if f.get("strip_invisible") and kind != "revert" else 0
             if text == cue.text:
-                skipped.append({"flag": f["id"], "cue": f["cue"], "reason": "no change"})
+                if stripped:
+                    applied.append({"flag": f["id"], "cue": f["cue"], "from": f.get("draft_shown", item["expect"]),
+                                    "to": text})
+                else:
+                    skipped.append({"flag": f["id"], "cue": f["cue"], "reason": "no change"})
                 continue
             srt.set_text(f["cue"], text)
             if kind == "revert":

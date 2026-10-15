@@ -136,6 +136,9 @@ def render(episode_id: str, start: int = 1, end: int | None = None, show_groups:
         line = f"{c.pos}|{to_display(c.text)}"
         if c.an8:
             line += "  {an8}"
+        opening = list(dict.fromkeys(t for t in c.markup if not t.startswith("</")))
+        if opening:
+            line += f"  ⟨markup: {' '.join(opening)}⟩"      # hidden from the text; `ccp cue` shows where
         if times:
             line += f"  @{short_time(c.start)}"
         out.append(line)

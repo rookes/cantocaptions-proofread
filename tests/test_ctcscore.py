@@ -60,7 +60,7 @@ def test_forced_alignment_peaks_follow_the_tokens():
     assert force_align_peaks(lp[:1], [1, 2], 0) is None       # fewer frames than tokens
 
 
-def test_text_steps_match_the_gpu_scorer():
+def test_text_steps():
     assert strip_final_particles("好嬲喎，你走啦") == "好嬲，你走"
     assert final_particle_mask("係㗎喇") == [False, True, True]
     tb = Table({"blank": 0, "tokens": {"好": [5, ""], "a": [7, ""], "撐": [9, "撐→撐"]},
@@ -68,4 +68,4 @@ def test_text_steps_match_the_gpu_scorer():
     assert tb.phonetic("號喇") == "好"
     assert tb.ids("好A") == ([5, 7], [], [])
     assert tb.ids("好攣") == ([5], [], ["攣"])
-    assert tb.ids("好嬲") is None                               # not in the table: GPU fallback
+    assert tb.ids("好嬲") == ([5], [], ["嬲"])                 # not in the table: unscorable

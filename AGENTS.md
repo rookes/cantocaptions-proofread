@@ -77,7 +77,12 @@ line stands) and why the proposal is right, naming the sounds and the meaning.
   Chinese output is garbled (我 shows as `µêæ`). It lasts for the session: do not prefix it to
   other commands. Run it again only if output ever looks garbled.
 - GPU commands (`evidence`, `listen`, `pipeline`, OCR) need a free GPU: run them one at a time
-  and do not retry in a loop when it is busy. Everything else, `score` included, is quick.
+  and do not retry in a loop when it is busy. `listen` runs in a GPU server that `ccp` starts
+  by itself and that keeps the recognisers loaded: the first call takes about a minute, later
+  ones a few seconds. `score` needs no GPU: it reads the audio `evidence` stored. `report`, `apply`, `export`, `publish` and
+  `prune` stop it when the pass is over. Everything else is quick.
+- Read skill files, their references and glossaries with your file-reading tool, never a
+  shell command (`Select-String`, `cat`, `grep`): the shell needs the user's approval for each.
 - Each episode has a workspace `work/<episode_id>/` (scratch space you may write to);
   `ccp status <id>` shows what it holds. Pass Chinese text as normal arguments; `⏎` is a line
   break inside a cue.

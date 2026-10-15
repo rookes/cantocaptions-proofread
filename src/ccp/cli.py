@@ -49,7 +49,7 @@ def cmd_locate(a):
 
 
 def cmd_status(a):
-    from . import episode, flags
+    from . import episode, flags, gpu_bridge
     from .prune import reclaimable_mb
     ep = episode.load(a.id)
     w = episode.path(a.id, "x").parent
@@ -68,12 +68,15 @@ def cmd_status(a):
         "emissions": (w / "emissions" / "tokens.json").exists(),
         "flags": flags.summary(rows), "report": (w / "report.html").exists(),
         "prunable_mb": reclaimable_mb(a.id),
+        "gpu_server": gpu_bridge.server_status(),
         **({"pruned": ep["pruned"]} if ep.get("pruned") else {}),
     })
 
 
 def cmd_reference(a):
-    from . import reference
+    from . import gpu_bridge, reference
+    if a.ocr:
+        gpu_bridge.stop_server("OCR needs the GPU")
     _out(reference.prepare(a.id, a.file, a.stream, a.ocr))
 
 
@@ -159,7 +162,7 @@ def _cue_detail(a, srt, c, evidence, placed, lint_rows, flag_rows) -> dict:
                      "same_content_as_draft": content_key(full, tag) == content_key(c.text, tag)}
     return {
         "cue": c.pos, "start": c.start, "end": c.end, "number": c.number,
-        "text": c.text, "jyutping": jyutping.romanize(c.text, all_readings=True),
+        "text": c.text, "raw": c.shown, "jyutping": jyutping.romanize(c.text, all_readings=True),
         "previous": [srt.cue(p).text for p in range(max(1, c.pos - a.context), c.pos)],
         "next": [srt.cue(p).text for p in range(c.pos + 1, min(len(srt.cues), c.pos + a.context) + 1)],
         "reference": refs, "asr": hyps,
@@ -181,6 +184,9 @@ def _cue_text(d: dict) -> str:
              + (f"  speaker {d['speaker']}" if d.get("speaker") else ""),
              f"draft  {to_display(d['text'])}",
              f"       {jp_main}"]
+    if d.get("raw"):
+        # The text above hides markup and invisible characters; this is the cue as written.
+        lines.append(f"raw    {d['raw']}")
     if poly:
         lines.append(f"       other readings: {'; '.join(poly[:8])}")
     # Meaning first (the reference and the conversation), then how it sounded (the recognisers).
@@ -325,11 +331,10 @@ def cmd_listen(a):
 
 
 def cmd_score(a):
-    """Scores come from the emissions `ccp evidence` stored (light, about a second). Items
-    that cannot be scored exactly from them (an explicit --pad or --start/--end span, a
-    character outside the stored token table, no stored emissions) go to the GPU in one
-    one-shot batch."""
-    from . import ctcscore, episode, gpu_bridge
+    """Scores come from the emissions `ccp evidence` stored: CPU only, about a second. The
+    aligner model is never loaded; an explicit --pad / --start / --end span is cut from the
+    stored emission of the group around it."""
+    from . import ctcscore, episode
     from .groups import listen_span
     ep = episode.load(a.id)
     srt = episode.srt(ep)
@@ -341,7 +346,6 @@ def cmd_score(a):
             raise SystemExit("give exactly one --cue with candidates, or --batch FILE")
         items = _span_items(a, ep, srt)
         items[0]["candidates"] = a.candidates
-    explicit_span = a.pad is not None or (a.start is not None and a.end is not None)
     for it in items:
         it.setdefault("key", f"cue {it['cue']}" if "cue" in it else None)
         if "draft" not in it:
@@ -349,26 +353,15 @@ def cmd_score(a):
         if "start" not in it:
             it["start"], it["end"] = listen_span(srt.cues, it["cue"], 0.3)
     try:
-        store = None if explicit_span else ctcscore.Store(a.id)
+        store = ctcscore.Store(a.id)
     except FileNotFoundError:
-        store = None
-    results: list = [None] * len(items)
-    if store is not None:
-        for k, it in enumerate(items):
-            r = ctcscore.score_item(store, it["start"], it["end"], it["draft"], it["candidates"])
-            if r is not None:
-                results[k] = {"key": it["key"], **r}
-    todo = [k for k, r in enumerate(results) if r is None]
-    if todo:
-        why = ("an explicit span" if explicit_span else
-               "no stored emissions (re-run `ccp evidence --force` to store them)" if store is None else
-               "characters or spans outside the stored emissions")
-        print(f"  [score] {len(todo)} item(s) need the GPU ({why}); loading the aligner, 20-40 s",
-              file=sys.stderr, flush=True)
-        res = gpu_bridge.run("score", {"media": ep["media"], "audio_track": ep.get("audio_track", 0),
-                                       "items": [items[k] for k in todo]})
-        for k, r in zip(todo, res["items"]):
-            results[k] = {**r, "scored_on": "gpu (clip alone)"}
+        raise SystemExit("this workspace has no stored emissions, which `score` reads: run "
+                         f"`uv run ccp evidence {a.id} --force` once to store them")
+    results = []
+    for it in items:
+        r = ctcscore.score_item(store, it["start"], it["end"], it["draft"], it["candidates"])
+        results.append({"key": it["key"], **r} if r is not None else
+                       {"key": it["key"], "error": "no stored audio covers this span"})
     _out({"items": results})
 
 
@@ -592,7 +585,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_corpus)
 
     for name, fn, helptext in (("listen", cmd_listen, "(GPU) re-run both ASRs on a cue or span"),
-                               ("score", cmd_score, "(GPU) CTC-score candidate texts against a cue's audio")):
+                               ("score", cmd_score, "CTC-score candidate texts against a cue's stored audio (CPU)")):
         s = sub.add_parser(name, help=helptext)
         s.add_argument("id")
         s.add_argument("--cue", type=int, action="append")
@@ -688,6 +681,11 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+# Commands that end a proofreading pass, or need the GPU for cantocaptions-ai: the GPU server
+# that `score` and `listen` keep running is stopped before them.
+END_OF_PASS = {"report", "apply", "export", "publish", "prune", "pipeline"}
+
+
 def main(argv=None) -> None:
     for stream in (sys.stdout, sys.stderr):
         try:
@@ -709,6 +707,11 @@ def main(argv=None) -> None:
         sp = sub.choices[args.cmd]
         sp.print_help(sys.stderr)
         sp.exit(2, f"\nccp {args.cmd}: error: unrecognized arguments: {' '.join(extra)}\n")
+    if args.cmd in END_OF_PASS and not getattr(args, "dry_run", False):
+        # The pass is over (or cantocaptions-ai needs the GPU): free the models the GPU
+        # server kept loaded for score and listen.
+        from . import gpu_bridge
+        gpu_bridge.stop_server("the pass is over" if args.cmd != "pipeline" else "pipeline needs the GPU")
     try:
         args.fn(args)
     except (ValueError, FileNotFoundError) as e:

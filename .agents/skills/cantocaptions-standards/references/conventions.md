@@ -222,6 +222,7 @@ Columns: ✅ Selected Variant | ❌ Other Variants | Jyutping | Explanation
 - 即係 | 姐係、啫係、唧係 | zik1 hai6
 - 淨係 | 剩係 | zing6 hai6
 - 呢個 | 依個 | ni1 go3
+- 依個 | 𠵱個 | ji1 go3
 - 傾偈 | 傾計 | king1 gai2
 - 抌 | 丼、揼 | dam2
 - 𢱕 | 溚、揼 | dap6

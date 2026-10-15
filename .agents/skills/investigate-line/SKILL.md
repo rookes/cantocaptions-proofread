@@ -21,7 +21,7 @@ few where the meaning is wrong and the right words are not obvious.
 - `uv run ccp sounds-like <span> --hyp <ASR span> --hyp <ASR span> [--source both]`: candidates that sound like the span
 - `uv run ccp dict <word>` · `uv run ccp dict <text> --contains`: meaning, register, whether a word exists; a particle's usage (looked up by its reading)
 - `uv run ccp corpus "<regex>" [--show <slug>] [-C 2]` · `--final [--among laa]`: usage in standardized subtitles; which particles end a phrase
-- `uv run ccp listen <id> --cue N [--pad 1.5] [--isolate]`: re-hear the cue with more context (GPU, 20–40 s)
+- `uv run ccp listen <id> --cue N [--pad 1.5] [--isolate]`: re-hear the cue with more context (GPU: about a minute the first time, seconds after)
 - `uv run ccp score <id> --cue N "<full text A>" "<full text B>"`: which of two sound-different texts fits the audio
 - `uv run ccp flag add <id> ...` · `uv run ccp flag keep <id> ...`: record the decision (below)
 

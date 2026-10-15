@@ -24,17 +24,50 @@ CLIP_STATUS: dict = {}       # filled by build(): clips made / failed, for the c
 GRADE_ORDER = {"fix": 0, "suggest": 1, "query": 2, "keep": 3}
 
 
-def _clip(media: str, track: int, start: float, end: float, out: Path, video: bool) -> str | None:
-    """Cut one clip; None on success, else the error."""
+def audio_delay(media: str, track: int) -> float:
+    """Seconds the audio track starts after the container's zero (a muxed delay: some dubs put
+    their audio a second or more after the video). The same measure as cantocaptions-ai's
+    `container_audio_delay`, which the evidence and listen audio already honour."""
+    cmd = ["ffprobe", "-v", "quiet", "-print_format", "json", "-show_streams", "-select_streams", "a",
+           "-show_format", media]
+    try:
+        data = json.loads(subprocess.run(cmd, capture_output=True, check=False).stdout or b"{}")
+    except (OSError, ValueError):
+        return 0.0
+    streams = data.get("streams") or []
+    if not streams:
+        return 0.0
+    stream = streams[track] if track < len(streams) else streams[0]
+
+    def start(obj) -> float:
+        try:
+            return float(obj.get("start_time"))
+        except (TypeError, ValueError):
+            return 0.0
+    return max(start(stream) - start(data.get("format") or {}), 0.0)
+
+
+def _clip(media: str, track: int, start: float, end: float, out: Path, video: bool,
+          delay: float = 0.0) -> str | None:
+    """Cut one clip; None on success, else the error.
+
+    ffmpeg seeks on the container's timeline, which is right once past a muxed audio delay.
+    Inside the delay there is no audio to seek to, so it starts at the first audio packet and
+    the clip would come out short, with the speech early. The missing lead is put back as
+    silence (`adelay`) on an audio track rebased to the clip's zero (`asetpts`), so the clip
+    covers [start, end] exactly, with the video too (players do not reliably honour an audio
+    start offset inside an mp4)."""
     if out.exists() and out.stat().st_size > 0:
         return None
+    lead_ms = round((delay - start) * 1000)
+    pad = ["-af", f"adelay={lead_ms}:all=1,asetpts=PTS-STARTPTS"] if lead_ms > 0 else []
     cmd = ["ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-to", f"{end:.3f}", "-i", media]
     if video:
-        cmd += ["-map", "0:v:0", "-map", f"0:a:{track}", "-vf", "scale=-2:480", "-c:v", "libx264",
+        cmd += ["-map", "0:v:0", "-map", f"0:a:{track}", "-vf", "scale=-2:480", *pad, "-c:v", "libx264",
                 "-preset", "veryfast", "-crf", "28", "-c:a", "aac", "-b:a", "96k", "-ac", "2",
                 "-movflags", "+faststart", str(out)]
     else:
-        cmd += ["-map", f"0:a:{track}", "-vn", "-ac", "1", "-c:a", "aac", "-b:a", "96k", str(out)]
+        cmd += ["-map", f"0:a:{track}", "-vn", *pad, "-ac", "1", "-c:a", "aac", "-b:a", "96k", str(out)]
     try:
         subprocess.run(cmd, check=True, capture_output=True, timeout=120)
         return None
@@ -49,9 +82,11 @@ def _clip(media: str, track: int, start: float, end: float, out: Path, video: bo
 
 def _diff_html(a: str, b: str) -> tuple[str, str]:
     """The draft and the proposal as two rows that line up character for character: each
-    changed piece sits in a cell (`.seg`) that also holds the other row's piece, invisibly
-    (`.ghost`), so both rows reserve the width of the wider one. Line breaks show as ⏎ to keep
-    each text on one row."""
+    changed piece sits in a cell (`.seg`) that is also sized by the other row's piece, so both
+    rows reserve the width of the wider one. The other piece lives in an attribute drawn by an
+    invisible ::before, which a browser never copies; the cell is an inline-block, because an
+    inline grid makes Chrome copy a line break on each side of it. Line breaks show as ⏎ to
+    keep each text on one row."""
     a, b = a.replace("\n", "⏎"), b.replace("\n", "⏎")
     sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
     left, right = [], []
@@ -61,8 +96,8 @@ def _diff_html(a: str, b: str) -> tuple[str, str]:
             left.append(x)
             right.append(y)
         else:
-            left.append(f'<span class="seg">{f"<del>{x}</del>" if x else ""}<span class="ghost">{y}</span></span>')
-            right.append(f'<span class="seg">{f"<ins>{y}</ins>" if y else ""}<span class="ghost">{x}</span></span>')
+            left.append(f'<span class="seg" data-w="{y}">{f"<del>{x}</del>" if x else ""}</span>')
+            right.append(f'<span class="seg" data-w="{x}">{f"<ins>{y}</ins>" if y else ""}</span>')
     return "".join(left), "".join(right)
 
 
@@ -82,11 +117,13 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
     # edits, so clips are cut in parallel (ffmpeg seeks before decoding; each one is short).
     clip_of: dict[int, str] = {}
     if media_ok:
+        delay = audio_delay(ep["media"], ep.get("audio_track", 0))
+
         def cut(f):
             cue = srt.cue(f["cue"])
             name = f"flag_{f['id']}.{'mp4' if video else 'm4a'}"
             err = _clip(ep["media"], ep.get("audio_track", 0), max(0.0, cue.start - CLIP_PAD),
-                        cue.end + CLIP_PAD, clips / name, video)
+                        cue.end + CLIP_PAD, clips / name, video, delay)
             return f["id"], (None if err else f"clips/{name}"), err
         with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 4)) as pool:
             done = list(pool.map(cut, flags))
@@ -102,7 +139,8 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
         clip_rel = clip_of.get(f["id"])
         cleanup = f.get("pass") == "cleanup"
         current = cue.text
-        left, right = _diff_html(f["draft"], f["proposed"]) if f.get("proposed") is not None else (html.escape(f["draft"].replace("\n", "⏎")), "")
+        before = f.get("draft_shown") or f["draft"]       # with invisible characters spelled out
+        left, right = _diff_html(before, f["proposed"]) if f.get("proposed") is not None else (html.escape(f["draft"].replace("\n", "⏎")), "")
         ctx = []
         for p in range(max(1, f["cue"] - 1), min(len(srt.cues), f["cue"] + 1) + 1):
             if p != f["cue"]:
@@ -176,7 +214,8 @@ ins { background:var(--ins); color:var(--ins-fg); text-decoration:none; }
 .pair { display:grid; grid-template-columns:5.5em 1fr; column-gap:6px; align-items:baseline; margin:8px 0 2px; }
 .pair .label { margin:0; } .pair .line { font-size:19px; white-space:pre; overflow-x:auto; }
 .row .pair .line { font-size:16px; }
-.seg { display:inline-grid; } .seg > * { grid-area:1 / 1; } .ghost { visibility:hidden; }
+.seg { display:inline-block; }
+.seg::before { content:attr(data-w); display:block; height:0; overflow:hidden; visibility:hidden; }
 .ref { font-size:15px; margin:8px 0 2px; } .ref .note { color:var(--fg); font-size:13px; margin-left:5.5em; }
 .ev { font-size:13px; margin:8px 0 0; padding-left:18px; } .ev li { margin:2px 0; }
 .small { font-size:13px; color:var(--muted); } audio, video { width:100%; max-width:480px; margin-top:8px; }

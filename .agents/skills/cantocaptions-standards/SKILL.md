@@ -16,8 +16,10 @@ character must match what the speaker said.
 - `references/style-guide.md`: Punctuation, formatting, line length, timing, multi-speaker lines, brackets, what is left untranscribed
 - `references/optional-characters.md`: Recommended but optional characters (disambiguation, consistency, loanwords)
 
-These files are long: search them for the character or Jyutping you need (Grep) rather than
-reading them whole. For one particle, `uv run ccp dict <particle>` is quicker.
+Each file is short (7–10k characters). Read the one you need whole with your file-reading
+tool, once per pass; it stays in context, so look things up there afterwards. Never search
+them with a shell command (`Select-String`, `grep`, `findstr`): each one needs the user's
+approval. For one particle, `uv run ccp dict <particle>` is quicker.
 
 These files are generated from the CantoCaptions README and the cantocaptions-ai language
 pack by `scripts/build_standards.py`. If they look out of date, tell the user. Do not edit

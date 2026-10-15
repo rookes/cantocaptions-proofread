@@ -48,3 +48,9 @@
 | 塞姆斯基 | coi3 mou5 si1 gei1 | | Mylius's surname (Zeramuski); reference + S1E07 |
 | 密達比也路立夏 | mat6 daat6 bei2 jaa5 lou6 laap6 haa6 | 密達比都路立夏 | Mitabi Jarnach; reference + S1E11 |
 | 妮可 | nei4 ho2 | | Rico Brzenska; reference + S1E11 |
+| 柯魯安 | o1 lou5 on1 | 椅魯安、安羅安 | Oluo Bozado; reference + 7 strict cues |
+| 貝多拉 | bui3 do1 laai1 | | Petra Ral; reference + 11 strict cues |
+| 艾爾度 | ngaai6 ji5 dou6 | 阿爾度、哈爾度 | Eld Jinn; reference + 9 strict cues |
+| 軍達 | gwan1 daat6 | 官達 | Gunther Schultz; reference + 9 strict cues |
+| 杏斯 | hang6 si1 | 漢吉、韓吉、亨斯 | Hange Zoë; reference + 26 strict cues |
+
