@@ -1,6 +1,7 @@
 ---
 name: clean-draft
-description: Fast text-only cleanup of machine-made or very messy Cantonese subtitles (AI-generated files from cantocaptions-ai, ASR transcriptions, rough drafts) before any audio work. Reads the draft with its reference subtitle and lint hits and applies the confident fixes in bulk with `ccp clean`; optionally follows with a realign and a full proofread. Use whenever the subtitles to proofread are AI-generated or ASR output (`machine_draft: true` in `ccp status`), or the user calls a file messy or rough.
+description: >-
+  Fast text-only cleanup of machine-made or very messy Cantonese subtitles (AI-generated files from cantocaptions-ai, ASR transcriptions, rough drafts) before any audio work. Reads the draft with its reference subtitle and lint hits and applies the confident fixes in bulk with `ccp clean`; optionally follows with a realign and a full proofread. Use whenever the subtitles to proofread are AI-generated or ASR output (`machine_draft: true` in `ccp status`), or the user calls a file messy or rough.
 ---
 
 # Clean a machine-made draft
