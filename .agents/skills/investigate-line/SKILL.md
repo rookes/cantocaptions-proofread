@@ -21,8 +21,8 @@ few where the meaning is wrong and the right words are not obvious.
 - `uv run ccp sounds-like <span> --hyp <ASR span> --hyp <ASR span> [--source both]`: candidates that sound like the span
 - `uv run ccp dict <word>` · `uv run ccp dict <text> --contains`: meaning, register, whether a word exists; a particle's usage (looked up by its reading)
 - `uv run ccp corpus "<regex>" [--show <slug>] [-C 2]` · `--final [--among laa]`: usage in standardized subtitles; which particles end a phrase
-- `uv run ccp listen <id> --cue N [--pad 1.5] [--isolate]`: re-hear the cue with more context (GPU: about a minute the first time, seconds after)
-- `uv run ccp score <id> --cue N "<full text A>" "<full text B>"`: which of two sound-different texts fits the audio
+- `uv run ccp listen <id> --cue N [--pad 1.5] [--isolate]` · `--json-file <file>` (a list of `{"cue": N}`): re-hear cues with more context (GPU)
+- `uv run ccp score <id> --cue N "<full text A>" "<full text B>"` · `--json-file <file>` (a list of `{"cue": N, "candidates": ["<full text>", ...]}`): which candidates the audio favours over the draft (CPU)
 - `uv run ccp flag add <id> ...` · `uv run ccp flag keep <id> ...`: record the decision (below)
 
 ## The procedure
@@ -50,9 +50,12 @@ few where the meaning is wrong and the right words are not obvious.
         sounds-like` with every ASR span as `--hyp` (the readings are in `ccp cue`), your own Cantonese.
         Tones usually survive a mishearing.
      3. Check each: `ccp dict` (a real word? register?) and `ccp corpus` (used in
-        standardized subtitles?).
+        standardized subtitles?). If `ccp corpus` answers `unavailable`, `ccp dict` and your
+        own Cantonese decide, and no record cites corpus evidence.
      4. Choose by meaning first, then by sound. If two candidates both fit the meaning and
-        differ in sound, or a word may be missing or extra, `score` or `listen`.
+        differ in sound, or a word may be missing or extra, `score` or `listen`. With no audio
+        tools on this machine, that is a `query` with both as alternatives (proofread-subtitles,
+        "Without audio").
      5. Nothing fits clearly: **query**, with the candidates as alternatives.
    - **`R` cannot decide.** No reference, an English one, a loose translation, or an `R` line
      that belongs to a neighbouring cue (low `agreement` in `ccp status`): judge the meaning

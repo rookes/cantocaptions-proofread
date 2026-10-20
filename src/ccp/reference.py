@@ -5,8 +5,10 @@ Order of preference, first hit wins unless the caller names a source:
   1. a reference file already on disk (CantoCaptions Standard Chinese/English folders,
      *.chs siblings, subtitle files next to the media)
   2. an embedded *text* subtitle stream (extracted with ffmpeg)
-  3. an embedded *bitmap* stream (PGS/VobSub/DVB), OCR'd with sub-convert -- only when the
-     caller passes ocr=True, because it is slow and writes a file next to the media.
+  3. an embedded *bitmap* stream (PGS/VobSub/DVB), OCR'd by cantocaptions-ai
+     (`cantocaptions MEDIA --references_only`, which needs its `ocr` extra) into the
+     workspace -- only when the caller passes ocr=True, because it takes the GPU for about a
+     minute.
 
 The reference is evidence for meaning and for how names are written. Its wording is
 Standard Chinese and must never be copied into a Cantonese cue.
@@ -15,10 +17,10 @@ from __future__ import annotations
 
 import bisect
 import json
+import os
 import re
 import shutil
 import subprocess
-import time
 from pathlib import Path
 
 from . import episode, paths
@@ -73,28 +75,54 @@ def _extract_stream(media: str, stream_index: int, dst: Path) -> None:
                     "-c:s", "srt", str(dst)], check=True)
 
 
-def _ocr(media: str, stream: dict, dst: Path) -> Path:
-    sc = paths.get("sub_convert")
-    media_p = Path(media)
-    codec = {"hdmv_pgs_subtitle": "pgs", "dvd_subtitle": "dvdsub", "dvb_subtitle": "dvb"}.get(stream["codec"])
-    spec = f"{codec}:{stream['stream_index']}" if codec else str(stream["stream_index"])
-    before = time.time() - 1
-    cmd = ["uv", "run", "--project", str(sc), "--no-sync", "sub-convert", "-p", media,
-           "-T", spec, "-ol", "chinese_cht", "-t", "cuda"]
-    proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
-    made = [p for p in media_p.parent.glob("*.srt") if p.stat().st_mtime >= before]
-    if proc.returncode != 0 or not made:
-        raise SystemExit(f"sub-convert failed (exit {proc.returncode}):\n{proc.stderr[-2000:]}")
-    newest = max(made, key=lambda p: p.stat().st_mtime)
-    shutil.copyfile(newest, dst)
-    return newest
+OCR_UNAVAILABLE = ("OCR of image subtitle tracks needs cantocaptions-ai with its `ocr` extra "
+                   "(`uv sync --inexact --extra ocr` there), which this machine does not have")
+
+
+def _ocr(episode_id: str, media: str, stream: dict, dst: Path) -> Path:
+    """OCR one bitmap stream with cantocaptions-ai into work/<id>/references/; returns the SRT."""
+    if not paths.ccai_has_ocr():
+        raise SystemExit(OCR_UNAVAILABLE + "; use another reference or none.")
+    ccai = paths.get("cantocaptions_ai")
+    out_dir = episode.path(episode_id, "references")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cmd = ["uv", "run", "--project", str(ccai), "--no-sync", "cantocaptions", media,
+           "--references_only", "--reference_tracks", str(stream["stream_index"]),
+           "--output_dir", str(out_dir),
+           "--log_file", "none", "--print_progress", "False"]
+    env = {k: v for k, v in os.environ.items() if k != "VIRTUAL_ENV"}
+    env["PYTHONIOENCODING"] = "utf-8"
+    # From cantocaptions-ai's own folder, so the user's config/user.cfg there applies.
+    proc = subprocess.run(cmd, cwd=str(ccai), env=env, capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+    manifest = out_dir / (Path(media).stem + ".references.json")
+    if proc.returncode != 0 or not manifest.exists():
+        raise SystemExit(f"cantocaptions-ai OCR failed (exit {proc.returncode}):\n"
+                         + (proc.stdout + proc.stderr)[-2000:])
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    track = next((t for t in data.get("tracks", []) if t["stream"]["index"] == stream["stream_index"]), None)
+    if track is None or not track.get("path") or track.get("error"):
+        why = (track or {}).get("error") or next(
+            (k["reason"] for k in data.get("skipped", []) if k["stream"]["index"] == stream["stream_index"]),
+            "no output")
+        raise SystemExit(f"cantocaptions-ai could not OCR stream {stream['stream_index']}: {why}")
+    shutil.copyfile(track["path"], dst)
+    return Path(track["path"])
 
 
 def options(ep: dict) -> list[dict]:
     opts = []
     for f in ep.get("reference_files", []):
         opts.append({"kind": "file", "path": f, "chinese": _is_chinese_name(f)})
+    can_ocr = paths.ccai_has_ocr()
     for s in ep.get("subtitle_streams", []):
+        if s["kind"] == "bitmap" and not can_ocr:
+            # Listed, so the user hears it exists, but marked: nothing here can read it.
+            opts.append({"kind": "stream_bitmap_no_ocr", "stream_index": s["stream_index"],
+                         "codec": s["codec"], "language": s["language"], "title": s["title"],
+                         "chinese": s["language"].lower() in CHINESE or bool(re.search(r"中|CH[ST]|chinese", s["title"], re.I)),
+                         "note": OCR_UNAVAILABLE})
+            continue
         opts.append({"kind": "stream_" + s["kind"], "stream_index": s["stream_index"], "codec": s["codec"],
                      "language": s["language"], "title": s["title"],
                      "chinese": s["language"].lower() in CHINESE or bool(re.search(r"中|CH[ST]|chinese", s["title"], re.I))})
@@ -119,11 +147,14 @@ def prepare(episode_id: str, file: str | None = None, stream: int | None = None,
                   + ([o for o in opts if o["kind"] == "stream_bitmap" and o["chinese"]] if ocr else [])
                   + [o for o in opts if o["kind"] in ("file", "stream_text") and not o["chinese"]])
         chinese_bitmap = [o for o in opts if o["kind"] == "stream_bitmap" and o["chinese"]]
-        if not ranked or (not ranked[0]["chinese"] and chinese_bitmap and not ocr):
+        no_ocr_chinese = [o for o in opts if o["kind"] == "stream_bitmap_no_ocr" and o["chinese"]]
+        if not ranked or (not ranked[0]["chinese"] and (chinese_bitmap or no_ocr_chinese) and not ocr):
             return {"status": "needs_decision", "options": opts,
                     "message": ("No Chinese text reference is available. "
-                                + ("A Chinese bitmap track can be OCR'd with --ocr (slow; sub-convert "
-                                   "writes an .srt next to the media file). " if chinese_bitmap else "")
+                                + ("A Chinese image track can be OCR'd with --ocr (cantocaptions-ai, "
+                                   "about a minute on the GPU). " if chinese_bitmap else "")
+                                + ("There is a Chinese image track, but " + OCR_UNAVAILABLE + ". "
+                                   if no_ocr_chinese and not chinese_bitmap else "")
                                 + ("An English text reference can be used with --file/--stream. " if ranked else "")
                                 + "Ask the user which to use.")}
         chosen = ranked[0]
@@ -134,11 +165,13 @@ def prepare(episode_id: str, file: str | None = None, stream: int | None = None,
     elif chosen["kind"] == "stream_text":
         _extract_stream(ep["media"], chosen["stream_index"], dst)
         source = f"{ep['media']} stream {chosen['stream_index']} ({chosen['codec']})"
+    elif chosen["kind"] == "stream_bitmap_no_ocr":
+        raise SystemExit(OCR_UNAVAILABLE + "; use another reference or none.")
     else:
         if not ocr:
-            raise SystemExit("that stream is a bitmap track; pass --ocr to OCR it (ask the user first)")
-        made = _ocr(ep["media"], chosen, dst)
-        source = f"OCR of {ep['media']} stream {chosen['stream_index']} via sub-convert (also written to {made})"
+            raise SystemExit("that stream is an image track; pass --ocr to OCR it")
+        made = _ocr(episode_id, ep["media"], chosen, dst)
+        source = f"OCR of {ep['media']} stream {chosen['stream_index']} by cantocaptions-ai ({made.name})"
 
     meta = measure(episode_id, {"source": source, "chinese": chosen["chinese"], **(extra or {})})
     return {"status": "ok", **meta}

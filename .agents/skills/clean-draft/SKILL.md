@@ -28,8 +28,9 @@ reference and a knowledge of Cantonese catches most of them from the text alone.
 
 ## Steps
 
-1. **Locate, settle the output and where it goes** (`proofread-subtitles` steps 1–2). For a
-   library file the user wants kept as it is, run `ccp copy-draft` now.
+1. **Locate, settle the output and where it goes** (`proofread-subtitles` steps 1–2,
+   including confirming media found by name). For a library file the user wants kept as it
+   is, run `ccp copy-draft` now.
 2. **Reference.** `ccp reference <id>`: with a reference this pass fixes far more. Note its
    `label`.
 3. **Glossary.** Read `glossaries/<show_slug>.md` if it exists.
@@ -102,7 +103,10 @@ Summarise the edits by category and the queries left open; say the cleanup used 
 reference only, and that a full pass (realign + proofread with audio evidence) is available.
 Never describe an edit as a particle or "dialect" correction: the cleanup makes none.
 
-**Full pass** (the user asked for a full or thorough proofread, a realign, or finished quality):
+**Full pass** (the user asked for a full or thorough proofread, a realign, or finished quality).
+It needs cantocaptions-ai: with `tools.audio_evidence: false` in `ccp status`, tell the user the
+cleanup is as far as this machine goes, and offer a text-only proofread
+(`proofread-subtitles`, "Without audio") instead.
 1. `uv run ccp pipeline <id> realign --mode adjust --input draft`, run in the background. It
    re-places every cue of the cleaned draft against the audio and splits cues at clear pauses,
    keeping the cleaned text. The cleanup records move to `previous/`, so if the user wants to

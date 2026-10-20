@@ -27,7 +27,9 @@ MODEL_TAGS = {"ft": "≠ft", "qw": "≠qw"}
 
 # Pure spelling variants (same sound, the standard picks one): folded before comparing any
 # recogniser with the draft, so an ASR line appears only for a difference in what was said.
-VARIANT_FOLD = {"裡": "裏", "說": "説", "爲": "為", "搵": "揾", "俾": "畀", "地": "哋", "喐": "郁"}
+# Every firm one-character variant rule of the linter (config/lint.toml plus the dataset's
+# standardization.toml), plus lint.toml's `asr_fold` for spellings that are not a rule.
+VARIANT_FOLD = lint.spelling_folds()
 # Pairs CantoCaptions distinguishes *by sound* (噉 gam2 / 咁 gam3, 邊 bin1 / 便 bin6,
 # 着 zoek / 著 zyu3, 吖 aa1 / 啊 aa3 / 呀 aa4) but stock Qwen3-ASR does not: it writes 咁, 邊,
 # 著, 呀 whatever was said. Its spelling of these is no evidence, so they are folded only

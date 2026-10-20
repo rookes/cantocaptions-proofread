@@ -26,8 +26,7 @@ sik6 (same tone; ik/at is a common confusion). The tones line up: 6 1 1 1
 against 6 1 1 1. The draft kept the tones even where the syllables were wrong, which is the
 typical mishearing.
 
-**Audio.** `ccp score` comes back `reliable: false` (the aligner barely hears this fast line),
-so its deltas are ignored. It is not needed anyway: meaning proposes the fix and sound confirms
+**Audio.** `ccp score` gives no verdict: the aligner barely hears this fast line. It is not needed anyway: meaning proposes the fix and sound confirms
 it.
 
 ```

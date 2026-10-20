@@ -19,7 +19,7 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
 - `uv run ccp status <id>`: what the workspace holds
 - `uv run ccp reference <id>` · `--stream N` · `--file <path>` · `--ocr` (ask first): the reference subtitle
 - `uv run ccp evidence <id> [--diarize]`: the recognisers and the aligner over every cue (GPU, minutes)
-- `uv run ccp render <id> --from 1 --to 60`: the review stream, one window at a time
+- `uv run ccp render <id> --save` · `--from N --to M`: the review stream, saved to a file to read and search · a fresh window printed
 - `uv run ccp cue <id> 9 11 24`: suspects in depth
 - `uv run ccp flag add/keep <id> ...`: record decisions (`investigate-line` → Recording)
 - `uv run ccp report <id>` · `uv run ccp apply <id> ...`: output (`references/report-and-apply.md`)
@@ -28,7 +28,14 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
 
 1. **Locate.** `uv run ccp locate <the user's words>`. A unique match creates the workspace
    and prints the record (subtitle, media, audio track, tier, notes). Several candidates: show
-   them and ask. No media: ask the user for the file. Never search for files yourself.
+   them and ask. Never search for files yourself.
+   - `media_candidates` (`needs_confirmation: true`): media found by name only, in the user's
+     media folders. Show the best one and ask whether it is the right episode (AGENTS.md rule
+     7). For the subtitle to proofread, offer the `subtitles_near` files that are written
+     Cantonese, or ask for the path; the Chinese or English ones beside it are references.
+     Then `uv run ccp locate --srt <subtitle> --media <media> --id <suggested_id>`.
+   - No media at all: ask the user for the file (`ccp locate ... --media PATH`), or proofread
+     without audio.
 2. **Settle the output** (AGENTS.md, "When the request is unclear") and where it goes
    (`references/report-and-apply.md` → "Where the result goes"): run `ccp copy-draft` now if
    the edits must go into a new file.
@@ -36,12 +43,15 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
    what is available and ask which to use. Note `agreement`: below 0.6 some `R` lines sit
    next to the wrong cue, so check `prev` / `next` before relying on one.
 4. **Evidence.** `uv run ccp evidence <id>`. Convention checks come with `ccp render` (`L` lines).
+   If `ccp status` shows `tools.audio_evidence: false` (no cantocaptions-ai on this machine),
+   skip this step and see "Without audio" below.
 5. **Glossary.** Read `glossaries/<show_slug>.md` if it exists; add names you settle while
    reading (format in `references/reading.md`).
-6. **Review pass.** Read the whole file in windows of about 60 cues (`ccp render`), to the
-   last cue. For each cue decide *fine* or *suspect* from the render alone, and note the
-   suspects with a word on why. Most cues are fine and need nothing more. Do not investigate
-   yet: later cues often explain earlier ones.
+6. **Review pass.** Save the review stream (`ccp render <id> --save`) and read it with your
+   file-reading tool, from the first cue to the last, a few hundred lines at a time. Search it
+   whenever another cue matters (how a name is written elsewhere, an earlier mention). Note
+   only the suspects, with a word on why: a cue that fits `R` and has no `≠`, `!`, `L` or `T`
+   line needs no comment. Do not investigate yet: later cues often explain earlier ones.
 7. **Decide.** `ccp cue` for the suspects (up to 20 per call), then for each, in this order:
    - **Settled already:** a convention, name or obvious typo fix; or both recognisers hear
      a fix that means what `R` means. Record it.
@@ -52,7 +62,7 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
      `investigate-line`.
 
    Every suspect ends with exactly one record (fix, suggest, query or keep), each with its
-   reason. Record each decision as you make it (a few at a time with `--json-file` is
+   reason. Record each decision as you make it (several at a time with `--json-file` is
    fine) and do not revisit it: the record holds it.
 8. **Output.** Build the report and/or apply, as the user asked
    (`references/report-and-apply.md`). Summarise: records by grade, the most important
@@ -84,8 +94,22 @@ form (郁, 説), and an `L` line flags it when it does not.
   past a small fraction of the cues, you are probably flagging preferences or the recognisers'
   habits: re-read AGENTS.md "How to decide a line". Lower tiers can have many convention
   flags (lint shows them).
-- No media (`media_exists: false`): review against `R` and the conventions only, and say that
-  audio was not checked. `ccp evidence` failed: report the error; never invent ASR output.
+- No media (`media_exists: false`) or no audio tools: see "Without audio". `ccp evidence`
+  failed: report the error; never invent ASR output.
+
+## Without audio
+
+With no media, or no cantocaptions-ai (`tools.audio_evidence: false` in `ccp status`), the
+review stream has `R` and `L` lines but no `≠` or `!` lines, and `listen`, `score` and
+`timing` do not run. Proofread from the text:
+- Suspects come from the meaning against `R` and the conversation, lint, names, and Standard
+  Written Chinese, as above.
+- Decide each one with `investigate-line` as usual, minus its audio steps. A fix the meaning
+  and a convention or name make certain is still a `fix`. A sound-alike fix no recogniser
+  could confirm is a `suggest` at most, and a choice between candidates that differ only in
+  sound is a `query`.
+- Timing and splitting are not possible.
+- In the summary, say plainly that the audio was not checked.
 
 ## Working draft vs source
 

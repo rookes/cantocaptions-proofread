@@ -53,4 +53,5 @@
 | 艾爾度 | ngaai6 ji5 dou6 | 阿爾度、哈爾度 | Eld Jinn; reference + 9 strict cues |
 | 軍達 | gwan1 daat6 | 官達 | Gunther Schultz; reference + 9 strict cues |
 | 杏斯 | hang6 si1 | 漢吉、韓吉、亨斯 | Hange Zoë; reference + 26 strict cues |
+| 卡拉尼斯 | kaa1 laai1 nei4 si1 | 卡拉靈斯、卡拉靈C | District (Karanes); reference + S1E21 |
 

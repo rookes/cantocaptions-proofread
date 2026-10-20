@@ -78,7 +78,11 @@ def run(episode_id: str, kind: str, mode: str = "adjust", input_path: str | None
     ep = episode.load(episode_id)
     if not ep.get("media_exists"):
         raise SystemExit("this workspace has no media; give it with `ccp locate ... --media PATH`")
-    applied = [f for f in flagstore.load(episode_id) if f["status"] == "applied"]
+    if not paths.has("cantocaptions_ai"):
+        raise SystemExit(f"`ccp pipeline {kind}` runs cantocaptions-ai, which is not set up on this "
+                         "machine (see `ccp setup`). Without it there is no realign or transcription: "
+                         "proofread the existing subtitle text-only, or tell the user.")
+    applied =[f for f in flagstore.load(episode_id) if f["status"] == "applied"]
     # Realigning the draft itself carries its corrections into the new draft, so nothing is lost.
     carries = kind == "realign" and input_path == "draft"
     if applied and not episode.draft_is_source(ep) and not carries and not force:
@@ -156,7 +160,9 @@ def main_area_path(ep: dict, name: str | None = None) -> tuple[Path, list[str]]:
     try:
         parts = src.relative_to(root).parts
     except ValueError:
-        raise SystemExit("--to-main needs a source file inside CantoCaptions/Subtitles; use --to PATH")
+        raise SystemExit("--to-main needs a source file inside CantoCaptions/Subtitles"
+                         + ("" if paths.has("subtitles") else " (no CantoCaptions library on this machine)")
+                         + "; use --to PATH")
     category, tree = parts[0], parts[1].replace(AI_TREE, "")
     show = ep.get("show_folder") or parts[2]
     inner = parts[2:-1]
@@ -225,13 +231,19 @@ def publish(episode_id: str, to: str | None = None, dry_run: bool = False, to_ma
     target.write_bytes(data)
     ep["published"] = {"to": str(target), "at": time.strftime("%Y-%m-%d %H:%M:%S")}
     episode.save(ep)
+    repo = paths.get("cantocaptions")
     try:
-        repo = paths.get("cantocaptions")
-        st = subprocess.run(["git", "-C", str(repo), "diff", "--stat", "--", str(target)],
-                            capture_output=True, text=True, encoding="utf-8", errors="replace")
-        result["git_diff_stat"] = st.stdout.strip()
-    except Exception:
-        pass
+        target.resolve().relative_to(repo.resolve())
+        inside_library = (repo / ".git").exists()
+    except ValueError:
+        inside_library = False
+    if inside_library:
+        try:
+            st = subprocess.run(["git", "-C", str(repo), "diff", "--stat", "--", str(target)],
+                                capture_output=True, text=True, encoding="utf-8", errors="replace")
+            result["git_diff_stat"] = st.stdout.strip()
+        except Exception:
+            pass
     return result
 
 

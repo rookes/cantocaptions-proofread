@@ -22,8 +22,8 @@ them with a shell command (`Select-String`, `grep`, `findstr`): each one needs t
 approval. For one particle, `uv run ccp dict <particle>` is quicker.
 
 These files are generated from the CantoCaptions README and the cantocaptions-ai language
-pack by `scripts/build_standards.py`. If they look out of date, tell the user. Do not edit
-them.
+pack by `scripts/build_standards.py`, and bundled here, so they work on a machine without
+either repository. If they look out of date, tell the user. Do not edit them.
 
 ## Rules of thumb
 

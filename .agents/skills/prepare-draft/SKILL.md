@@ -5,7 +5,10 @@ description: Run cantocaptions-ai on an episode through ccp to create or fix a s
 
 # Prepare a draft with cantocaptions-ai
 
-cantocaptions-ai is the ASR and alignment pipeline in `../cantocaptions-ai`. You never run it
+cantocaptions-ai is the ASR and alignment pipeline in `../cantocaptions-ai` (where `ccp setup`
+says it is). Everything here needs it: if `ccp setup` shows `audio_evidence: false`, tell the
+user that realigning and transcribing are not possible on this machine, and offer a
+text-only proofread of the existing subtitle instead. You never run it
 directly and never search the media drive yourself. `ccp pipeline` runs it on the episode's
 media with the right audio track and the user's own settings (their `config/user.cfg` in that
 repo: vocal isolation, diarization...). It writes everything into the episode workspace and
@@ -16,8 +19,9 @@ touched until you `ccp publish`, and only with their go-ahead.
 
 1. **Locate.** `uv run ccp locate <show> S1E03`. WIP and other excluded files are found like
    any other, and media is inferred from the show's other episodes when the dataset has not
-   linked it (see `notes` in the output). If several files match, show them and ask. If
-   locate reports no media, ask the user for the file and run
+   linked it (see `notes` in the output). If several files match, show them and ask. Media
+   found by name in the user's media folders (`media_candidates`) is confirmed with the user
+   first (AGENTS.md rule 7). If locate reports no media, ask the user for the file and run
    `uv run ccp locate --select <episode_id> --media <path>`. For an episode with no subtitle
    at all: `uv run ccp locate --media <path> --id <name>`.
 2. **Reference (optional but useful later).** `uv run ccp reference <id>`, as in proofreading.

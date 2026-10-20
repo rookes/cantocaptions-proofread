@@ -101,6 +101,14 @@ def main() -> None:
         + compact_tables(opt.read_text(encoding="utf-8")), encoding="utf-8")
     for p in sorted(OUT.glob("*.md")):
         print(f"{p.relative_to(ROOT)}  {p.stat().st_size} bytes")
+    # The dataset's variant rules, bundled for machines without the dataset (ccp lint).
+    std = paths.get("dataset") / "rules" / "standardization.toml"
+    if std.is_file():
+        snap = ROOT / "config" / "standardization.snapshot.toml"
+        snap.write_text("# SNAPSHOT of cantocaptions-dataset/rules/standardization.toml, used by ccp lint when the\n"
+                        "# dataset is not on this machine. Refreshed by scripts/build_standards.py; do not edit here.\n\n"
+                        + std.read_text(encoding="utf-8"), encoding="utf-8")
+        print(f"{snap.relative_to(ROOT)}  {snap.stat().st_size} bytes")
 
 
 if __name__ == "__main__":

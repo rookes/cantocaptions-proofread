@@ -24,7 +24,11 @@ can review.
    reference was chosen (or that there is none). If yt-dlp fails (private, region-locked or
    age-restricted video, a site change), report its message. Do not try other download tools.
 2. **Transcribe.** `uv run ccp pipeline <id> transcribe`, run as a long-running (background)
-   command. It uses the user's cantocaptions-ai settings and takes a few minutes for a short
+   command. Without cantocaptions-ai (`ccp setup` shows `audio_evidence: false`) there is no
+   transcription: if `fetch` downloaded a written-Cantonese track (`yue`), offer to proofread
+   it as the draft (`uv run ccp locate --srt <that file> --media <the downloaded audio> --id <id>`,
+   then `clean-draft`, text only); otherwise tell the user this machine cannot make subtitles
+   from the audio, and stop. It uses the user's cantocaptions-ai settings and takes a few minutes for a short
    video. The ASR output becomes the working draft, and the untouched original is kept.
 3. **Clean.** The ASR draft is machine output: follow the `clean-draft` skill (text only, no
    evidence). Read `ccp status <id>` → `reference.label` first:

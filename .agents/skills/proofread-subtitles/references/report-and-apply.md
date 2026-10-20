@@ -10,7 +10,7 @@ Decide before applying anything, from the user's request:
 - **"Put the edits in a new file"**, or any target other than the source: run
   `uv run ccp copy-draft <id>` *before* any edit. Edits then go into a workspace copy. When
   finished, write it out with `uv run ccp publish <id> --to-main` (the show's folder in the main
-  library area, with a library-style name) or `uv run ccp publish <id> --to <file or folder>`.
+  library area, with a library-style name; needs the library) or `uv run ccp publish <id> --to <file or folder>`.
   Run it with `--dry-run` first and report the target. A request that names the destination is
   the user's go-ahead to publish there. Never overwrite an existing file unless the user says so
   (`--overwrite`). If `publish` returns a `warning`, pass it on word for word.
@@ -40,8 +40,9 @@ Only when the user asked for edits:
 3. Retimes and splits: only from decisions, or with `--structure` when the user asked.
 
 `ccp apply` changes only the text lines of the affected cues (timings, numbering, BOM and line
-endings stay byte-identical) and skips any record whose cue changed since it was made. It runs
-the CantoCaptions lint afterwards and shows a `git diff --stat`. Tell the user how many cues
+endings stay byte-identical) and skips any record whose cue changed since it was made. For a
+file in the CantoCaptions library it runs the library's lint afterwards and shows a
+`git diff --stat`. Tell the user how many cues
 changed and any skipped records, and that nothing was committed.
 
 **A pipeline draft or a copy** (`ccp status` → `draft_origin`): `apply` edits

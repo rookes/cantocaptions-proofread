@@ -2,8 +2,10 @@
 
 ## `ccp render`
 
-`uv run ccp render <id> --from N --to M` prints one window of cues. Each cue is a line
-`N|text  @m:ss.s`, followed by whatever evidence exists for it:
+`uv run ccp render <id> --from N --to M` prints a window of cues; with `--save` it writes the
+stream (the whole episode unless `--from`/`--to`) to `work/<id>/review.txt` instead, as a
+snapshot that later records do not change. Each cue is a line `N|text  @m:ss.s` (so `^37\|`
+finds cue 37), followed by whatever evidence exists for it:
 
 - `37|阿媽食多都亂瞓唔着㗎  @3:21.5`: cue 37 (its position in the file), its text (`⏎` = line break), start time
 - `{an8}` after the text: an overlapping background line shown at the top of the screen

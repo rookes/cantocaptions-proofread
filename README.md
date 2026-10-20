@@ -15,32 +15,51 @@ corrections to the subtitle file in place. It never commits.
 
 Requirements: Windows, [uv](https://docs.astral.sh/uv/), ffmpeg on PATH, Node.js or deno (yt-dlp
 needs a JavaScript runtime for YouTube; update yt-dlp with `uv lock --upgrade-package yt-dlp` when a
-site changes), an NVIDIA GPU (≥ 8 GB)
-for the audio tools, and the sibling repositories next to this one:
-
-```
-source/
-  CantoCaptions/            subtitle library
-  cantocaptions-dataset/    manifest (subtitle -> media) and quality tiers; run its `scan` and `stdcheck`
-  cantocaptions-ai/         speech models (its own .venv, models downloaded)
-  sub-convert/              OCR of image subtitles (optional)
-  cantocaptions-proofread/  this repo
-```
+site changes). The audio tools need an NVIDIA GPU (≥ 8 GB) and cantocaptions-ai.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ```
 
-Paths live in `config/paths.toml`. Put machine-specific overrides in `config/paths.local.toml`.
+### Optional sibling repositories
+
+The agent works with whichever of these the machine has, next to this repo by default:
+
+```
+source/
+  CantoCaptions/            subtitle library
+  cantocaptions-dataset/    manifest (subtitle -> media) and quality tiers; run its `scan` and `stdcheck`
+  cantocaptions-ai/         speech models and OCR (its own .venv, models downloaded)
+  cantocaptions-proofread/  this repo
+```
+
+| repository | enables | without it |
+|---|---|---|
+| CantoCaptions | finding a subtitle by show and episode; the strict corpus (with the dataset); `publish` into the library | give the subtitle's path, or pick one beside the media; no corpus; `publish --to PATH` |
+| cantocaptions-dataset | subtitle-to-media links, quality tiers, the strict corpus, current variant rules | media is searched for by name in your media folders (always confirmed with you); no tiers or corpus; lint uses `config/standardization.snapshot.toml` |
+| cantocaptions-ai | audio evidence (`evidence`, `listen`, `score`, `timing`), `pipeline`, OCR of image subtitle tracks (with its `ocr` extra) | a text-only proofread against the reference and the conventions |
+
+`uv run ccp setup` reports which are present. On first use the agent asks where the missing
+ones are (or records that you do not have them) and writes the answers to
+`config/paths.local.toml`; `ccp setup --set KEY=PATH`, `--add-media-dir PATH`,
+`--decline KEY` and `--done` do the same by hand.
+
+**Media folders.** Without the dataset, `ccp locate "Show S1E03"` searches your own media
+folders (`media_dirs`, any layout) by show name and episode number: release names, initials
+(AoT) and either half of a bilingual folder name all match. A match is only a candidate; the
+agent shows it to you and asks before using it. Subtitle files beside the media are offered as
+the draft or as references.
+
+Paths live in `config/paths.toml`. Machine-specific overrides go in `config/paths.local.toml`.
 Defaults, relative to this directory:
 
 | what | where |
 |---|---|
 | CantoCaptions subtitle library (a git repo) | `../CantoCaptions/Subtitles/` |
 | cantocaptions-dataset (manifest linking subtitles to media, quality tiers) | `../cantocaptions-dataset/data/` |
-| cantocaptions-ai (ASR, alignment, vocal isolation, diarization) | `../cantocaptions-ai/` |
-| sub-convert (OCR of image subtitles) | `../sub-convert/` |
-| media files | `E:/dataset_media/` |
+| cantocaptions-ai (ASR, alignment, vocal isolation, diarization, OCR) | `../cantocaptions-ai/` |
+| media files the dataset links to | `E:/dataset_media/` |
+| your own media folders | `media_dirs` (none by default) |
 | words.hk dictionary | `dictionaries/words-hk-full-bilingual.json` |
 | per-show name glossaries (kept by the agent) | `glossaries/<show_slug>.md` |
 
@@ -72,7 +91,8 @@ profile so every session (including an agent's, if its terminal loads the profil
 
 | command | does |
 |---|---|
-| `ccp locate "<show> S1E03"` | find subtitle + media (WIP files too; media inferred from sibling episodes when the dataset has none), create the workspace |
+| `ccp setup` | which optional repos and media folders this machine has; record first-use answers |
+| `ccp locate "<show> S1E03"` | find subtitle + media (WIP files too; media inferred from sibling episodes when the dataset has none, or searched for by name in your media folders), create the workspace |
 | `ccp pipeline <id> realign --mode adjust` / `transcribe` | (GPU) run cantocaptions-ai on the episode; its output becomes the working draft |
 | `ccp publish <id>` | copy a pipeline draft back over the source file in CantoCaptions |
 | `ccp fetch <url>` | download a video's audio and its subtitles (as references) with yt-dlp |
@@ -80,12 +100,12 @@ profile so every session (including an agent's, if its terminal loads the profil
 | `ccp timing <id> N [--split "a\|b"]` | retime or split proposals from the stored audio alignment |
 | `ccp reference <id>` | find/extract/OCR a reference subtitle and line up its timing |
 | `ccp evidence <id>` | (GPU) both recognisers and aligner peaks for every cue |
-| `ccp render <id> --from N --to M` | the review stream |
+| `ccp render <id> --from N --to M` / `--save` | the review stream, printed or saved to `work/<id>/review.txt` |
 | `ccp cue <id> N` | everything about one cue |
 | `ccp sounds-like <span> --hyp …` | words that sound like a suspect span (words.hk + strict corpus) |
 | `ccp dict` | words.hk dictionary (particles are looked up by their reading) |
 | `ccp corpus` | evidence from strict-tier subtitles only; `--final` counts the particles that end a phrase |
-| `ccp listen`, `ccp score` | (GPU) re-run recognisers on a cue; CTC-score candidate texts (from stored emissions, no GPU) |
+| `ccp listen`, `ccp score` | (GPU) re-run recognisers on a cue; CTC-score candidate texts (from stored emissions, no GPU). Both take many cues from `--json-file` |
 | `ccp clean <id> --lint` / `--edits FILE` | text-only cleanup of machine-made drafts: bulk edits, recorded as flags and applied at once |
 | `ccp flag add/keep/update/list` | record each decision: grade fix / suggest / query / keep, with a required reason |
 | `ccp report <id>` | HTML report with clips, exports `decisions.json` |
@@ -117,6 +137,42 @@ together, the server unloads the least recently used one to make room. It stops 
 pass ends (`report`, `apply`, `export`, `publish`, `prune`), before other GPU work (`evidence`,
 `pipeline`, OCR), or after 15 minutes unused. `ccp status <id>` shows it (`gpu_server`); its log is
 `cache/gpu_server.log`. `CCP_GPU_SERVER=0` turns it off (each call then loads its own models).
+
+## Updating the conventions
+
+Mechanical checks (the `L` lines, `ccp clean --lint`, and which recogniser spellings the
+review stream hides) all come from **`config/lint.toml`**, applied on top of
+cantocaptions-dataset's `rules/standardization.toml`, which is read at run time (or, on a machine
+without the dataset, its bundled copy `config/standardization.snapshot.toml`, which
+`scripts/build_standards.py` refreshes). Edit
+`lint.toml`; nothing needs rebuilding.
+
+| to … | in `config/lint.toml` |
+|---|---|
+| require a spelling (X is always wrong, Y right) | an `[[extra_variants]]` entry: `nonstandard`, `standard`, optional `note` |
+| question a spelling that is only sometimes wrong | the same entry with `confidence = "heuristic"`, or the form in `query_variants` |
+| stop a rule firing inside a word (如果啲, 小姐係) | add the word to `protect` |
+| drop a dataset rule | its `nonstandard` form in `skip_variants` |
+| flag a Standard Written Chinese word | an `[[swc]]` entry with its `exceptions` |
+| hide a recogniser spelling that is not a rule | `[asr_fold]` (every firm one-character variant is hidden already) |
+| change the line width | `[limits]` |
+
+A show's names go in `glossaries/<show>.md` (`Avoid` column) instead.
+
+Check a change with `scripts/lint_rules.py`:
+- `--list` prints every rule in effect and its source;
+- `"<line>"` lints a sample line;
+- `--survey <form>` runs the rule over the strict corpus and shows which lines it flags and
+  which a protected word saves. A firm rule should fire on almost no strict-tier lines.
+
+The other places conventions live serve other readers:
+- **The agent's prose:** CantoCaptions `README.md` and `Optional Characters.md`, and
+  cantocaptions-ai's `languages/yue/proofread/cantocaptions.md`. Refresh the skill's copies
+  with `scripts/build_standards.py`.
+- **The dataset's tier scoring:** the dataset's `standardization.toml`. Edit it there only
+  when the dataset should count the rule too.
+- **The transcription pipeline:** cantocaptions-ai's `languages/yue/rules/*.toml` rewrite
+  machine output. Lint catches anything they miss.
 
 ## Tests
 

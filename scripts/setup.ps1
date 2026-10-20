@@ -5,8 +5,10 @@
 # 1. Installs the light environment (uv sync --group dev).
 # 2. Links .claude\skills -> .agents\skills (a directory junction; no admin rights needed), so
 #    Claude Code and Google Antigravity read the same skill files.
-# 3. Builds the dictionary, readings and strict-corpus caches under cache\.
-# 4. Checks the sibling repositories and tools the GPU commands rely on.
+# 3. Builds the dictionary, readings and (when the library and dataset are here) strict-corpus
+#    caches under cache\.
+# 4. Reports which optional sibling repositories and media folders this machine has
+#    (`ccp setup`); the agent asks about the missing ones on first use.
 
 param(
     # Also add a UTF-8 console line to your PowerShell profile (see README, "Windows console encoding").
@@ -38,26 +40,13 @@ if (Test-Path $link) {
 }
 
 Write-Host "== caches (first run takes about a minute)"
-uv run --no-sync python -c "from ccp import dictionary, jyutping, corpus; print('  dictionary senses:', len(dictionary.senses())); print('  characters with readings:', len(jyutping._table())); print('  strict corpus lines:', len(corpus.lines('strict')))"
+uv run --no-sync python -c "from ccp import dictionary, jyutping, corpus; print('  dictionary senses:', len(dictionary.senses())); print('  characters with readings:', len(jyutping._table())); print('  strict corpus lines:', len(corpus.lines('strict')) if corpus.available() else 'none (no library or dataset tiers)')"
 
 Write-Host "== checks"
 foreach ($tool in "ffmpeg", "ffprobe", "uv") {
     if (Get-Command $tool -ErrorAction SilentlyContinue) { Write-Host "  ok   $tool" } else { Write-Warning "missing $tool on PATH" }
 }
-uv run --no-sync python -c @"
-from ccp import paths
-checks = [
-    ('CantoCaptions subtitles', paths.get('subtitles')),
-    ('dataset manifest', paths.get('dataset') / 'data' / 'manifest.json'),
-    ('dataset quality tiers', paths.get('dataset') / 'data' / 'std' / 'episodes.json'),
-    ('dataset standardization rules', paths.get('dataset') / 'rules' / 'standardization.toml'),
-    ('cantocaptions-ai venv', paths.get('cantocaptions_ai') / '.venv'),
-    ('sub-convert venv (OCR)', paths.get('sub_convert') / '.venv'),
-    ('media root', paths.get('media_root')),
-]
-for name, p in checks:
-    print(('  ok   ' if p.exists() else '  MISSING ') + f'{name}: {p}')
-"@
+uv run --no-sync ccp setup
 if ($FixConsole) {
     Write-Host "== console encoding"
     $line = '[Console]::OutputEncoding = [Text.UTF8Encoding]::new()  # added by cantocaptions-proofread setup: UTF-8 program output'

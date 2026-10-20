@@ -1,0 +1,436 @@
+# SNAPSHOT of cantocaptions-dataset/rules/standardization.toml, used by ccp lint when the
+# dataset is not on this machine. Refreshed by scripts/build_standards.py; do not edit here.
+
+# Standardization DETECTORS. Read-only: there is deliberately no `replace` key
+# anywhere in this file, so it cannot be loaded by the parent's rule engine and
+# accidentally used to rewrite ground truth.
+#
+# Sections:
+#   [[contrast_sets]]     two graphs competing for one functional slot
+#   [[compounds]]         a compound SFP vs loose renderings of the SAME particle
+#   [[variants]]          1:1 lexical conventions
+#   [[particle_variants]] single-char particle typos needing a positional guard
+#   [[markers]]           evidence that standardization was ATTEMPTED, not violated
+#
+# `floor` values are placeholders — `stdcheck --calibrate` rewrites them from the
+# gold corpus and stores the result in data/std/floors.json. Do not hand-tune
+# them: gold rates run from 0.985 (tim) to 0.120 (ge2), and a single global floor
+# would either fail every set or pass every file.
+#
+# `confidence = "heuristic"` means the rule needs grammar it does not have. Those
+# are excluded from the headline score unless [scoring] include_heuristic = true.
+
+# ---------------------------------------------------------------------------
+# Bracket tags that are part of the conventions.
+#
+# Only [國] (Mandarin) is sanctioned. Everything else — [上海話], [歌詞],
+# [菲律賓語], [唔清楚], [？] — is ad-hoc notation and counts against the file's
+# `format` axis. The cue itself is dropped from training either way (see
+# rules/drop_cues.toml); this is about whether the FILE follows the conventions.
+#
+# The Cantonese markers [中文]/[粵語]/[廣東話] are absent deliberately: they never
+# survive into scored text (strip_tags.toml removes them) and a corpus-wide check
+# found zero of them in raw text, so listing them would be dead configuration.
+[tags]
+allowed = ["國"]
+
+# ---------------------------------------------------------------------------
+# Contrast sets — "does this text make the tonal distinction at all?"
+#
+# NOT "does it maximize rare graphs": 呀 (aa4), 咁 (gam3) and 啦 (laa1) are all
+# legitimate standard particles, and scoring strict-share ranks the gold files
+# below the corpus median. See standardization.py.
+#
+# 𠺢 and 吒 are absent on purpose — both are compound-bound (97% and 80% followed
+# by 嘛) and live under [[compounds]]. 咤 and 嚹 are dropped: 11 and 1 corpus-wide.
+# ---------------------------------------------------------------------------
+
+[[contrast_sets]]
+name = "aa"
+strict = "吖嗄𠻺"
+loose = "呀"
+
+[[contrast_sets]]
+name = "gam"
+strict = "噉"
+loose = "咁"
+
+[[contrast_sets]]
+name = "laa"
+strict = "喇嗱嘞"
+loose = "啦"
+
+[[contrast_sets]]
+name = "lo"
+strict = "囖"
+loose = "囉"
+
+[[contrast_sets]]
+name = "tim"
+strict = "𠻹㖭"
+loose = "添"
+
+[[contrast_sets]]
+name = "zek"
+strict = "唧"
+loose = "啫"
+
+# Low-power but not wrong: 嘅 is overwhelmingly the possessive/nominalising ge3
+# and is only partly competing with 𠸏 (ge2). The calibrated floor (~0.042)
+# accounts for that; the weighting lets tim/lo/gam/aa carry the signal.
+[[contrast_sets]]
+name = "ge2"
+strict = "𠸏"
+loose = "嘅"
+
+# ---------------------------------------------------------------------------
+# Compound SFPs — the highest-precision axis.
+#
+# A compound and its loose rendering are the SAME particle written two ways,
+# unlike 呀 vs 吖 which have distinct legitimate uses. Matches are consumed in
+# order, so a loose form shared by two standard targets (呀嘛 -> 吖嘛 or 𠻺嗎) is
+# counted exactly once.
+# ---------------------------------------------------------------------------
+
+[[compounds]]                       # a1 maa3
+standard = "吖嘛"
+loose = ["呀嘛", "啊嘛", "阿嘛", "阿嗎"]
+
+[[compounds]]                       # a6 maa5
+standard = "𠻺嗎"
+loose = ["呀嗎", "啊嗎"]
+
+[[compounds]]                       # ga1 maa3
+standard = "𠺢嘛"
+loose = ["㗎嘛", "嘅嘛", "架嘛"]
+
+[[compounds]]                       # za1 maa3
+standard = "吒嘛"
+loose = ["啫嘛", "之嘛", "姐嘛", "咋嘛", "啫嗎", "咋嗎"]
+
+[[compounds]]                       # a1 naa4
+standard = "吖嗱"
+loose = ["呀嗱", "啊嗱"]
+
+[[compounds]]                       # a3 ho2
+standard = "啊嗬"
+loose = ["呀嗬", "啊可"]
+
+[[compounds]]                       # a3 haa2
+standard = "啊吓"
+loose = ["呀吓"]
+
+[[compounds]]                       # a6 le5
+standard = "𠻺哩"
+loose = ["呀哩", "啊哩"]
+
+[[compounds]]                       # ga3 wo3
+standard = "㗎喎"
+loose = ["嘅喎", "架喎"]
+
+[[compounds]]                       # ga3 ze1
+standard = "㗎啫"
+loose = ["嘅啫", "架啫"]
+
+[[compounds]]                       # ga3 zek1
+standard = "㗎唧"
+loose = ["嘅唧", "架唧"]
+
+[[compounds]]                       # la3 wo3
+standard = "喇喎"
+loose = ["啦喎"]
+
+[[compounds]]                       # ha6 waa5
+standard = "下哇"
+loose = ["係哇", "呀哇"]
+
+# Not in the README compound table, but behaves exactly like one: the tone here
+# is gam2, so the standard form is 噉啦 / 噉喇. Measured 125 vs 122 corpus-wide,
+# an unusually well-balanced discriminator.
+[[compounds]]
+standard = "噉啦"
+loose = ["咁啦"]
+
+[[compounds]]
+standard = "噉喇"
+loose = ["咁喇"]
+
+# ---------------------------------------------------------------------------
+# Particle variants needing the sentence-final guard.
+#
+# 架, 嫁 and 噶 are ordinary words as well as particles (架車 132x, 嫁畀 45x), so
+# they only count as particles in utterance-final position. The guard's
+# punctuation class includes ASCII on purpose — `架!` and `架?` are real particle
+# uses and appear in exactly the files that use ASCII punctuation.
+# ---------------------------------------------------------------------------
+
+[[particle_variants]]
+nonstandard = "噶"
+standard = "㗎"
+guard = "sentence_final"
+
+[[particle_variants]]
+nonstandard = "架"
+standard = "㗎"
+guard = "sentence_final"
+
+[[particle_variants]]
+nonstandard = "嫁"
+standard = "㗎"
+guard = "sentence_final"
+
+[[particle_variants]]               # 嗟 for 咋 / 啫 — 97% sentence-final already
+nonstandard = "嗟"
+standard = "啫"
+guard = "sentence_final"
+
+# ---------------------------------------------------------------------------
+# Required CantoCaptions lexical conventions (README "Other Required").
+# ---------------------------------------------------------------------------
+
+[[variants]]
+nonstandard = "無錯"
+standard = "冇錯"
+
+[[variants]]
+nonstandard = "宜家"
+standard = "而家"
+
+[[variants]]
+nonstandard = "咁樣"
+standard = "噉樣"
+
+[[variants]]
+nonstandard = "睇吓"
+standard = "睇下"
+
+[[variants]]
+nonstandard = "諗吓"
+standard = "諗下"
+
+[[variants]]
+nonstandard = "試吓"
+standard = "試下"
+
+[[variants]]
+nonstandard = "剩係"
+standard = "淨係"
+
+[[variants]]
+nonstandard = "啫係"
+standard = "即係"
+
+[[variants]]
+nonstandard = "唧係"
+standard = "即係"
+
+[[variants]]
+nonstandard = "果個"
+standard = "嗰個"
+
+[[variants]]
+nonstandard = "依個"
+standard = "呢個"
+
+[[variants]]
+nonstandard = "果啲"
+standard = "嗰啲"
+
+[[variants]]
+nonstandard = "唔駛"
+standard = "唔使"
+
+[[variants]]
+nonstandard = "唔洗"
+standard = "唔使"
+
+[[variants]]
+nonstandard = "傾計"
+standard = "傾偈"
+
+[[variants]]
+nonstandard = "隔離"
+standard = "隔籬"
+confidence = "heuristic"            # 隔離 is also the medical/isolation sense
+
+[[variants]]
+nonstandard = "乜野"
+standard = "乜嘢"
+
+[[variants]]
+nonstandard = "點解呀"
+standard = "點解啊"
+confidence = "heuristic"
+
+# --- HK standard character variants, from the parent's chars_hk.toml (1:1) ---
+
+[[variants]]
+nonstandard = "俾"
+standard = "畀"
+
+[[variants]]
+nonstandard = "我地"
+standard = "我哋"
+
+[[variants]]
+nonstandard = "你地"
+standard = "你哋"
+
+[[variants]]
+nonstandard = "佢地"
+standard = "佢哋"
+
+[[variants]]
+nonstandard = "人地"
+standard = "人哋"
+
+[[variants]]
+nonstandard = "爹地"
+standard = "爹哋"
+
+[[variants]]
+nonstandard = "裡"
+standard = "裏"
+
+[[variants]]
+nonstandard = "麵"
+standard = "麪"
+
+[[variants]]
+nonstandard = "說"
+standard = "説"
+
+[[variants]]
+nonstandard = "爲"
+standard = "為"
+
+[[variants]]
+nonstandard = "搵"
+standard = "揾"
+
+[[variants]]
+nonstandard = "溫"
+standard = "温"
+
+[[variants]]
+nonstandard = "兌"
+standard = "兑"
+
+[[variants]]
+nonstandard = "脫"
+standard = "脱"
+
+[[variants]]
+nonstandard = "稅"
+standard = "税"
+
+[[variants]]
+nonstandard = "悅"
+standard = "悦"
+
+[[variants]]
+nonstandard = "銳"
+standard = "鋭"
+
+[[variants]]
+nonstandard = "閱"
+standard = "閲"
+
+[[variants]]
+nonstandard = "羣"
+standard = "群"
+
+[[variants]]
+nonstandard = "衆"
+standard = "眾"
+
+[[variants]]
+nonstandard = "祕"
+standard = "秘"
+
+[[variants]]
+nonstandard = "敎"
+standard = "教"
+
+[[variants]]
+nonstandard = "鷄"
+standard = "雞"
+
+[[variants]]
+nonstandard = "汙"
+standard = "污"
+
+[[variants]]
+nonstandard = "洩"
+standard = "泄"
+
+[[variants]]
+nonstandard = "駡"
+standard = "罵"
+
+[[variants]]
+nonstandard = "銹"
+standard = "鏽"
+
+[[variants]]
+nonstandard = "鉤"
+standard = "鈎"
+
+[[variants]]
+nonstandard = "衛"
+standard = "衞"
+
+[[variants]]
+nonstandard = "蔥"
+standard = "葱"
+
+[[variants]]
+nonstandard = "艷"
+standard = "豔"
+
+[[variants]]
+nonstandard = "葯"
+standard = "藥"
+
+[[variants]]
+nonstandard = "滙"
+standard = "匯"
+
+[[variants]]
+nonstandard = "啟"
+standard = "啓"
+
+[[variants]]
+nonstandard = "奬"
+standard = "獎"
+
+[[variants]]
+nonstandard = "牀"
+standard = "床"
+confidence = "heuristic"            # parent maps 床->牀; README is not explicit
+
+[[variants]]
+nonstandard = "妳"
+standard = "你"
+
+[[variants]]
+nonstandard = "您"
+standard = "你"
+
+[[variants]]
+nonstandard = "癐"
+standard = "攰"
+
+[[variants]]
+nonstandard = "倆"
+standard = "兩"
+
+# ---------------------------------------------------------------------------
+# Markers — standardization ATTEMPTED. Never counted as violations.
+# ---------------------------------------------------------------------------
+
+# An isolated 𠺢 (not followed by 嘛) is a typo in a rare graph: 6 corpus-wide
+# against 218 𠺢嘛. Someone was standardizing and slipped.
+# [[markers]]
+# name = "isolated_gaa1"
+# pattern = "𠺢(?!嘛)"

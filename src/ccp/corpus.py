@@ -4,6 +4,10 @@ Only episodes cantocaptions-dataset's `stdcheck` tiers as `strict` are indexed b
 (`data/std/episodes.json`). Everything else in CantoCaptions -- AI-generated trees, WIP,
 loosely standardized files -- is never searched unless a looser tier is asked for
 explicitly, so a count here is evidence of what the *standard* writes.
+
+Without the dataset's tiers (or without the library) there is no corpus at all: untiered
+files are never searched in its place, since a count over them is no evidence of the
+standard. `available()` says which; `ccp corpus` then answers "unavailable".
 """
 from __future__ import annotations
 
@@ -44,9 +48,19 @@ def episodes_file():
     return paths.get("dataset") / "data" / "std" / "episodes.json"
 
 
+UNAVAILABLE = ("the standardized corpus needs cantocaptions-dataset's quality tiers "
+               "(data/std/episodes.json) and the CantoCaptions library; one is missing (see `ccp setup`)")
+
+
+def available() -> bool:
+    return episodes_file().is_file() and paths.has("subtitles")
+
+
 @lru_cache(maxsize=1)
 def episodes() -> dict:
-    return json.loads(episodes_file().read_text(encoding="utf-8"))
+    """episode_id -> tier record, or {} without the dataset."""
+    f = episodes_file()
+    return json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
 
 
 def allowed_tiers(tier: str) -> list[str]:
@@ -58,6 +72,8 @@ def allowed_tiers(tier: str) -> list[str]:
 @lru_cache(maxsize=4)
 def lines(tier: str = "strict") -> list[Line]:
     tiers = set(allowed_tiers(tier))
+    if not available():
+        return []
     root = paths.get("subtitles")
     chosen = sorted((eid, rec) for eid, rec in episodes().items() if rec.get("tier") in tiers)
     stamp = hashlib.sha1()

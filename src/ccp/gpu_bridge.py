@@ -38,11 +38,21 @@ class ServerUnavailable(Exception):
     pass
 
 
-def _ccai() -> Path:
+NO_CCAI = ("{what} needs cantocaptions-ai, which is not set up on this machine (looked in {path}). "
+           "Proofread without it: review against the reference, lint and the conventions, and say "
+           "that the audio was not checked. If the user has it, `ccp setup --set cantocaptions_ai=PATH`.")
+
+
+def require_ccai(what: str) -> Path:
+    """cantocaptions-ai's folder, or an error saying how to carry on without it."""
     ccai = paths.get("cantocaptions_ai")
-    if not (ccai / "pyproject.toml").exists():
-        raise SystemExit(f"cantocaptions-ai not found at {ccai} (set cantocaptions_ai in config/paths.local.toml)")
+    if not paths.has("cantocaptions_ai"):
+        raise SystemExit(NO_CCAI.format(what=what, path=ccai))
     return ccai
+
+
+def _ccai() -> Path:
+    return require_ccai("this command")
 
 
 def _state_path() -> Path:
@@ -162,6 +172,7 @@ def _served(script: str, request: dict) -> dict:
 
 
 def run(script: str, request: dict, timeout: float | None = None) -> dict:
+    require_ccai(f"`ccp {script}`")
     if script in SERVED and os.environ.get("CCP_GPU_SERVER", "1") != "0":
         try:
             return _served(script, request)

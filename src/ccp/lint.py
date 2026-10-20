@@ -19,18 +19,45 @@ from .srtio import RE_INVISIBLE, Cue, SrtFile, clean_text, invisible_name
 SENT_END = "，。？！…,.?!；;：:」』）)"
 
 
+# A copy of cantocaptions-dataset's rules/standardization.toml, used when the dataset is not on
+# this machine. scripts/build_standards.py refreshes it from the dataset.
+STANDARDIZATION_SNAPSHOT = paths.CONFIG / "standardization.snapshot.toml"
+
+
+def standardization_rules() -> Path:
+    """The dataset's variant rules if it is here, else the bundled snapshot of them."""
+    std_p = paths.get("dataset") / "rules" / "standardization.toml"
+    return std_p if std_p.is_file() else STANDARDIZATION_SNAPSHOT
+
+
 @lru_cache(maxsize=1)
 def config() -> dict:
     local = tomllib.loads((paths.CONFIG / "lint.toml").read_text(encoding="utf-8"))
-    std_p = paths.get("dataset") / "rules" / "standardization.toml"
-    std = tomllib.loads(std_p.read_text(encoding="utf-8")) if std_p.exists() else {}
+    std_p = standardization_rules()
+    std = tomllib.loads(std_p.read_text(encoding="utf-8")) if std_p.is_file() else {}
     skip = set(local.get("skip_variants", []))
     variants = [v for v in std.get("variants", []) if v["nonstandard"] not in skip]
     variants += local.get("extra_variants", [])
     return {"variants": variants, "compounds": std.get("compounds", []),
             "particle_variants": std.get("particle_variants", []),
             "swc": local.get("swc", []), "limits": local.get("limits", {}),
-            "protect": local.get("protect", []), "query_variants": set(local.get("query_variants", []))}
+            "protect": local.get("protect", []), "query_variants": set(local.get("query_variants", [])),
+            "asr_fold": local.get("asr_fold", {})}
+
+
+def firm(v: dict) -> bool:
+    """A variant rule that is always right (a `standard` hit, fixed by `ccp clean --lint`), as
+    opposed to a heuristic or query one that only raises a question."""
+    return v.get("confidence") != "heuristic" and v["nonstandard"] not in config()["query_variants"]
+
+
+def spelling_folds() -> dict[str, str]:
+    """Nonstandard -> standard for every firm one-character variant, plus `asr_fold`: what the
+    review stream folds before comparing a recogniser with the draft."""
+    cfg = config()
+    folds = {v["nonstandard"]: v["standard"] for v in cfg["variants"]
+             if firm(v) and len(v["nonstandard"]) == 1 and len(v["standard"]) == 1}
+    return {**folds, **cfg["asr_fold"]}
 
 
 def display_width(text: str) -> float:
@@ -85,7 +112,7 @@ def check_cue(cue: Cue, glossary_avoid: dict[str, str] | None = None) -> list[di
     out: list[dict] = []
     for v in cfg["variants"]:
         if v["nonstandard"] in text:
-            heuristic = v.get("confidence") == "heuristic" or v["nonstandard"] in cfg["query_variants"]
+            heuristic = not firm(v)
             free, word = occurrences(text, v["nonstandard"])
             if not free:
                 continue                     # only inside protected words (如果啲, 啤啤熊)

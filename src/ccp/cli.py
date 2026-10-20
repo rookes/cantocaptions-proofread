@@ -39,7 +39,7 @@ def cmd_locate(a):
         return _out(episode.create(rec, a.audio_track, a.media))
     if not a.request:
         raise SystemExit("give a request (e.g. 'AoT S1E03'), --select EPISODE_ID, --srt PATH or --media PATH --id NAME")
-    res = locate.find(" ".join(a.request))
+    res = locate.find(" ".join(a.request), rescan=a.rescan)
     if len(res["candidates"]) == 1 and not a.no_create:
         rec = locate.by_id(res["candidates"][0]["episode_id"])
         res["workspace"] = episode.create(rec, a.audio_track, a.media)
@@ -70,7 +70,23 @@ def cmd_status(a):
         "prunable_mb": reclaimable_mb(a.id),
         "gpu_server": gpu_bridge.server_status(),
         **({"pruned": ep["pruned"]} if ep.get("pruned") else {}),
+        "tools": _tools(),
     })
+
+
+def _tools() -> dict:
+    """What this machine can do for a pass (the full picture is `ccp setup`)."""
+    from .setup import capabilities
+    caps = capabilities()
+    return {k: caps[k] for k in ("audio_evidence", "ocr", "corpus", "lint_rules")}
+
+
+def cmd_setup(a):
+    from . import setup
+    if a.set or a.add_media_dir or a.remove_media_dir or a.decline or a.done:
+        return _out(setup.apply(a.set or [], a.add_media_dir or [], a.remove_media_dir or [],
+                                a.decline or [], a.done))
+    _out(setup.status())
 
 
 def cmd_reference(a):
@@ -87,6 +103,7 @@ def cmd_evidence(a):
         raise SystemExit("no media linked to this workspace")
     if not ep.get("srt"):
         raise SystemExit("no draft yet: run `ccp pipeline <id> transcribe` first")
+    gpu_bridge.require_ccai("audio evidence")
     models = a.models
     if models is None:
         # A transcribed draft was written by the fine-tuned model: re-running it only vouches
@@ -108,8 +125,21 @@ def cmd_evidence(a):
 
 
 def cmd_render(a):
+    from . import episode
     from .render import render
-    _out(render(a.id, a.start, a.end, a.groups, not a.no_times))
+    text = render(a.id, a.start, a.end, a.groups, not a.no_times)
+    if not a.save:
+        return _out(text)
+    # The whole stream as a file the agent reads with its own file tools and can search. It is a
+    # snapshot: records made later are not in it (a printed window is always fresh).
+    import time
+    out = episode.path(a.id, "review.txt")
+    out.write_text(f"# saved {time.strftime('%Y-%m-%d %H:%M')}: records made later are not shown "
+                   "(`ccp render --from N --to M` is fresh)\n" + text + "\n", encoding="utf-8")
+    n = len(episode.srt(episode.load(a.id)).cues)
+    _out({"file": str(out), "cues": f"{a.start}-{min(a.end or n, n)} of {n}", "lines": text.count("\n") + 1,
+          "find": "each cue starts a line with its number and |, so ^37\\| finds cue 37",
+          "note": "a snapshot: `ccp render --from N --to M` prints a fresh window"})
 
 
 MAX_CUES = 20
@@ -238,6 +268,11 @@ def _is_cjk(ch: str) -> bool:
 def cmd_sounds_like(a):
     from . import corpus, dictionary, sound
     vocab = None
+    notes = []
+    if (a.source in ("corpus", "both") or a.show or a.counts) and not corpus.available():
+        notes.append("no standardized corpus on this machine (see `ccp setup`): words.hk only"
+                     + (", no corpus counts" if a.counts else ""))
+        a.source, a.show, a.counts = "dict", None, False
     if a.source in ("corpus", "both") or a.show:
         cv = corpus.ngram_vocab(a.tier, a.show, a.min_count)
         vocab = cv if a.source == "corpus" else {**dictionary.term_readings(), **cv}
@@ -260,7 +295,7 @@ def cmd_sounds_like(a):
     from . import jyutping
     _out({"query": a.text, "query_jyutping": jyutping.romanize(a.text, all_readings=True),
           "hyps": [{"text": h, "jyutping": jyutping.romanize(h, all_readings=True)} for h in a.hyp or []],
-          "matches": rows})
+          "matches": rows, **({"note": "; ".join(notes)} if notes else {})})
 
 
 def cmd_dict(a):
@@ -283,6 +318,10 @@ def cmd_dict(a):
 
 def cmd_corpus(a):
     from . import corpus
+    if not corpus.available():
+        return _out({"status": "unavailable", "reason": corpus.UNAVAILABLE,
+                     "instead": "decide from `ccp dict`, the conventions (cantocaptions-standards) "
+                                "and your own Cantonese; cite no corpus evidence"})
     if a.vs:
         return _out(corpus.compare([a.pattern, *a.vs], a.tier, a.show))
     if a.final:
@@ -292,20 +331,46 @@ def cmd_corpus(a):
 
 # ---------------------------------------------------------------------------- audio
 
-def _span_items(a, ep, srt):
+def read_json_items(path: str) -> list:
+    """A JSON list (or a single object) the agent wrote for `--json-file`. A byte-order mark,
+    which PowerShell writes, is fine."""
+    items = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    return items if isinstance(items, list) else [items]
+
+
+def _file_item(it, srt, default_pad: float) -> dict:
+    """One `--json-file` item, checked, with its audio span: `start`/`end` as given, or the cue
+    ± `pad` (an explicit pad is not clamped to the neighbours, as with --pad)."""
     from .groups import listen_span
-    if a.batch:
-        return json.loads(Path(a.batch).read_text(encoding="utf-8"))
-    if a.cue:
-        items = []
-        for pos in a.cue:
-            s, e = listen_span(srt.cues, pos, a.pad if a.pad is not None else a.default_pad,
-                               clamp=a.pad is None)
-            items.append({"key": f"cue {pos}", "cue": pos, "start": round(s, 3), "end": round(e, 3)})
-        return items
-    if a.start is not None and a.end is not None:
-        return [{"key": f"{a.start}-{a.end}", "start": a.start, "end": a.end}]
-    raise SystemExit("give --cue N, --start/--end, or --batch FILE")
+    if not isinstance(it, dict):
+        return {"key": "item", "error": 'each item must be an object, e.g. {"cue": 12, ...}'}
+    cue = it.get("cue")
+    if cue is None and "start" in it and "end" in it:
+        return {"key": f"{it['start']}-{it['end']}", "start": float(it["start"]), "end": float(it["end"])}
+    if isinstance(cue, str) and cue.isdigit():
+        cue = int(cue)
+    if not isinstance(cue, int) or not 1 <= cue <= len(srt.cues):
+        return {"key": f"cue {cue}", "error": f"no cue {cue} (the file has cues 1-{len(srt.cues)})"}
+    if "start" in it and "end" in it:
+        s, e = float(it["start"]), float(it["end"])
+    else:
+        pad = it.get("pad")
+        s, e = listen_span(srt.cues, cue, pad if pad is not None else default_pad, clamp=pad is None)
+    return {"key": f"cue {cue}", "cue": cue, "start": round(s, 3), "end": round(e, 3)}
+
+
+def _span_items(a, ep, srt) -> tuple[list[dict], list[dict]]:
+    """(items to run, items refused with their error)."""
+    if a.json_file:
+        raw = read_json_items(a.json_file)
+    elif a.cue:
+        raw = [{"cue": pos, **({"pad": a.pad} if a.pad is not None else {})} for pos in a.cue]
+    elif a.start is not None and a.end is not None:
+        raw = [{"start": a.start, "end": a.end}]
+    else:
+        raise SystemExit("give --cue N, --start/--end, or --json-file FILE")
+    items = [_file_item(it, srt, a.default_pad) for it in raw]
+    return [i for i in items if "error" not in i], [i for i in items if "error" in i]
 
 
 def cmd_listen(a):
@@ -314,7 +379,9 @@ def cmd_listen(a):
     ep = episode.load(a.id)
     srt = episode.srt(ep)
     a.default_pad = 1.0
-    items = _span_items(a, ep, srt)
+    items, refused = _span_items(a, ep, srt)
+    if not items:
+        raise SystemExit("; ".join(f"{r['key']}: {r['error']}" for r in refused))
     res = gpu_bridge.run("listen", {"media": ep["media"], "audio_track": ep.get("audio_track", 0),
                                     "models": a.models.split(","), "isolate": a.isolate, "items": items})
     for it, src in zip(res["items"], items):
@@ -325,6 +392,7 @@ def cmd_listen(a):
             it["asr"][tag] = {"text": text, "jyutping": jyutping.romanize(text)}
             if src.get("cue"):
                 it["asr"][tag]["same_content_as_draft"] = content_key(text, tag) == content_key(it["draft"], tag)
+    res["items"].extend(refused)
     res["note"] = ("A padded span includes neighbouring speech; compare only the part that "
                    "corresponds to the cue.")
     _out(res)
@@ -332,37 +400,88 @@ def cmd_listen(a):
 
 def cmd_score(a):
     """Scores come from the emissions `ccp evidence` stored: CPU only, about a second. The
-    aligner model is never loaded; an explicit --pad / --start / --end span is cut from the
-    stored emission of the group around it."""
+    aligner model is never loaded; a span reaching past its group is cut to the group's stored
+    audio. Many cues in one call: --json-file, a list of {"cue", "candidates"[, "pad"]}; a bad
+    item is reported and the rest are still scored."""
     from . import ctcscore, episode
-    from .groups import listen_span
+    from .srtio import from_display
     ep = episode.load(a.id)
     srt = episode.srt(ep)
-    a.default_pad = 0.3
-    if a.batch:
-        items = json.loads(Path(a.batch).read_text(encoding="utf-8"))
+    if a.json_file:
+        raw = read_json_items(a.json_file)
+    elif a.cue and len(a.cue) == 1 and a.candidates:
+        raw = [{"cue": a.cue[0], "candidates": a.candidates,
+                **({"pad": a.pad} if a.pad is not None else {}),
+                **({"start": a.start, "end": a.end} if a.start is not None and a.end is not None else {})}]
     else:
-        if not a.cue or len(a.cue) != 1:
-            raise SystemExit("give exactly one --cue with candidates, or --batch FILE")
-        items = _span_items(a, ep, srt)
-        items[0]["candidates"] = a.candidates
-    for it in items:
-        it.setdefault("key", f"cue {it['cue']}" if "cue" in it else None)
-        if "draft" not in it:
-            it["draft"] = srt.cue(it["cue"]).text
-        if "start" not in it:
-            it["start"], it["end"] = listen_span(srt.cues, it["cue"], 0.3)
+        raise SystemExit('give one --cue N and the candidate texts ("full text A" "full text B"), '
+                         "or --json-file FILE")
     try:
         store = ctcscore.Store(a.id)
     except FileNotFoundError:
         raise SystemExit("this workspace has no stored emissions, which `score` reads: run "
                          f"`uv run ccp evidence {a.id} --force` once to store them")
     results = []
-    for it in items:
-        r = ctcscore.score_item(store, it["start"], it["end"], it["draft"], it["candidates"])
-        results.append({"key": it["key"], **r} if r is not None else
-                       {"key": it["key"], "error": "no stored audio covers this span"})
-    _out({"items": results})
+    for it in raw:
+        span = _file_item(it, srt, 0.3)
+        if "error" in span:
+            results.append(span)
+            continue
+        if "cue" not in span:
+            results.append({"key": span["key"], "error": "give the cue: candidates are scored against its text"})
+            continue
+        draft = srt.cue(span["cue"]).text
+        cands = it.get("candidates")
+        cands = [cands] if isinstance(cands, str) else [c for c in cands or [] if isinstance(c, str)]
+        cands = [from_display(c) for c in cands]
+        others = [c for c in cands if c != draft]
+        if not others:
+            results.append({"key": span["key"], "error": "no candidate texts" + (
+                " other than the draft's own" if cands else ' (give "candidates": ["full text", ...])')})
+            continue
+        r = ctcscore.score_item(store, span["start"], span["end"], draft, others)
+        results.append({"key": span["key"], **r} if r is not None else
+                       {"key": span["key"], "error": "no stored audio covers this cue"})
+    _out({"items": results} if a.json else _score_text(results))
+    if results and all("error" in r for r in results):
+        raise SystemExit(1)
+
+
+def _score_text(results: list[dict]) -> str:
+    """One block per cue: the draft, then each candidate with its delta and what it means."""
+    from .ctcscore import AGAINST, FAVOURS, verdict
+    from .srtio import to_display
+    out = [f"# delta = candidate minus draft (nats): favours ≥ +{FAVOURS:g} · against ≤ {AGAINST:g} "
+           "· undecided between"]
+    for r in results:
+        if "error" in r:
+            out.append(f"{r['key']}  error: {r['error']}")
+            continue
+        notes = [] if r["reliable"] else ["the aligner barely hears this cue: no verdict"]
+        if r.get("span"):
+            notes.append(r["span"])
+        if r.get("draft_unscorable"):
+            notes.append("no token for " + "".join(r["draft_unscorable"]) + " in the draft")
+        out.append(f"{r['key']}  {to_display(r['draft'])}" + (f"  ({'; '.join(notes)})" if notes else ""))
+        for c in r["candidates"]:
+            extra = []
+            if c.get("abstain"):
+                delta, word = "", "abstains"
+                extra.append(c["abstain"])
+            elif not r["reliable"]:
+                delta, word = "", "-"
+            else:
+                delta = f"{c['delta']:+.1f}" if c["delta"] is not None else ""
+                word = verdict(c["delta"])
+            if c.get("substituted"):
+                extra.append("scored with " + ", ".join(c["substituted"]))
+            if c.get("unscorable"):
+                extra.append("no token for " + "".join(c["unscorable"]))
+            if c.get("scored_as"):
+                extra.append(f"scored as {c['scored_as']}")
+            out.append(f"  {delta:>6}  {word:<10} {to_display(c['text'])}"
+                       + (f"  ({'; '.join(extra)})" if extra else ""))
+    return "\n".join(out)
 
 
 def cmd_fetch(a):
@@ -415,8 +534,7 @@ def cmd_flag(a):
     a.reason = a.reason or a.note
     if a.action == "add":
         if a.json_file:
-            items = json.loads(Path(a.json_file).read_text(encoding="utf-8-sig"))
-            return _out([flags.fmt(f) for f in flags.add_many(a.id, items if isinstance(items, list) else [items])])
+            return _out([flags.fmt(f) for f in flags.add_many(a.id, read_json_items(a.json_file))])
         need = [k for k in ("cue", "category", "grade", "reason") if getattr(a, k) is None]
         if need:
             raise SystemExit(f"missing --{', --'.join(need)}")
@@ -513,7 +631,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--media", help="the media file, overriding the inferred one; alone (with --id): an episode with no subtitle yet")
     s.add_argument("--audio-track", type=int, help="audio stream (0-based among audio streams)")
     s.add_argument("--no-create", action="store_true", help="do not create a workspace on a unique match")
+    s.add_argument("--rescan", action="store_true", help="re-read your media folders instead of the cached index")
     s.set_defaults(fn=cmd_locate)
+
+    s = sub.add_parser("setup", help="which sibling repos and media folders this machine has; first-use answers")
+    s.add_argument("--set", action="append", metavar="KEY=PATH",
+                   help="where a resource is: cantocaptions, dataset, cantocaptions_ai, media_root...")
+    s.add_argument("--add-media-dir", action="append", metavar="PATH", help="a folder of your media to search by name")
+    s.add_argument("--remove-media-dir", action="append", metavar="PATH")
+    s.add_argument("--decline", action="append", metavar="KEY", help="the user does not have this; do not ask again")
+    s.add_argument("--done", action="store_true", help="first-use setup is finished")
+    s.set_defaults(fn=cmd_setup)
 
     s = sub.add_parser("fetch", help="download a video's audio (+ its subtitles as references) from a link")
     s.add_argument("url"); s.add_argument("--id", help="workspace id (default: yt-<video id>)")
@@ -543,9 +671,11 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--pad", type=float, default=0.5)
     s.set_defaults(fn=cmd_evidence)
 
-    s = sub.add_parser("render", help="the review stream for a window of cues")
+    s = sub.add_parser("render", help="the review stream for a window of cues, or saved to a file")
     s.add_argument("id"); s.add_argument("--from", dest="start", type=int, default=1)
     s.add_argument("--to", dest="end", type=int); s.add_argument("--groups", action="store_true")
+    s.add_argument("--save", action="store_true",
+                   help="write the stream (all cues unless --from/--to) to work/<id>/review.txt instead of printing it")
     s.add_argument("--no-times", action="store_true"); s.set_defaults(fn=cmd_render)
 
     s = sub.add_parser("cue", help="everything known about one or more cues")
@@ -591,11 +721,15 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--cue", type=int, action="append")
         s.add_argument("--pad", type=float, help="seconds of padding (explicit: not clamped to neighbours)")
         s.add_argument("--start", type=float); s.add_argument("--end", type=float)
-        s.add_argument("--batch", help="JSON list of items")
+        s.add_argument("--json-file", help=('many cues in one call: a JSON list of {"cue": N, "candidates": ["full text", ...]}'
+                                            if name == "score" else 'many cues in one call: a JSON list of {"cue": N}')
+                       + ' (optional "pad")')
+        s.add_argument("--batch", dest="json_file", help=argparse.SUPPRESS)
         if name == "listen":
             s.add_argument("--models", default="ft,qw"); s.add_argument("--isolate", action="store_true")
         else:
             s.add_argument("candidates", nargs="*")
+            s.add_argument("--json", action="store_true", help="full JSON instead of compact text")
         s.set_defaults(fn=fn)
 
     s = sub.add_parser("timing", help="propose a retime or a split for a cue from the stored audio alignment")

@@ -10,39 +10,34 @@
 - How does the standard write this word? Use `cantocaptions-standards`, then `ccp dict`, then `ccp corpus`. Do not follow files outside the strict tier.
 - How is this name written in this show? Use AGENTS.md principle 2. Do not invent a new transliteration.
 - What do the recognisers hear with more context? Use `ccp listen ID --cue N` (`--pad 1.5`, `--isolate` for music). Do not read a padded transcript as belonging only to this cue.
-- Which of two candidates that sound different fits the audio? Was a word said at all? Use `ccp score ID --cue N "full text A" "full text B"`. Do not score homophones or particles.
+- Which of two candidates that sound different fits the audio? Was a word said at all? Use `ccp score ID --cue N "full text A" "full text B"`. Do not read a verdict as the meaning.
 - Is the cue missing a word at its edge? Use `[edge]` characters in ASR lines, `ccp render --groups`, `ccp listen --pad 1.5`. Do not move words between cues (flag it instead).
 
 ## When to use audio
 
 Audio (`listen`, `score`) answers **how** a line was said, among wordings that all fit the
-meaning. It never decides **what** was meant. So:
+meaning. It never decides **what** was meant. (On a machine without cantocaptions-ai there is
+no audio at all; `ccp status` shows `tools.audio_evidence: false`.) So:
 
 - **Use it** when two candidates both fit the meaning and differ in sound; when a word may be
   missing or extra and the recognisers disagree; or before grading `fix` a correction that
-  no recogniser heard anything like (check that the score is not strongly against it).
+  no recogniser heard anything like (check that the verdict is not `against`).
 - **Skip it** when both recognisers already hear a fix that means what `R` says; when the
   change is spelling, convention, punctuation or a name; when the candidates are homophones
   or differ only in particles (the scorer abstains); when the meaning alone makes the fix
   certain (a dropped 人 in 巨入侵); and when the draft already means what `R` means (keep).
 
-`score` reads the aligner output that `ccp evidence` stored, so it takes about a second. Several
-cues at once: `--batch FILE` (a JSON list of `{"cue": N, "candidates": ["full text", ...]}`).
-`--pad` widens the span within the stored audio of the cue's group (`span` in the result says
-when it had to stop at the group's edge). `listen` uses the GPU, through a server that keeps
-the recognisers loaded for the pass: the first call takes about a minute, later ones seconds.
+For `score`, `--pad` (or `"pad"` in the file) widens the span within the stored audio of the
+cue's group; the result says when it had to stop at the group's edge.
 
 ### Reading a score
 
-- `delta` is the candidate's log-likelihood minus the draft's, in nats. Above **+3**: the audio
-  clearly fits the candidate better. Below **−6** for a candidate that adds or drops a word:
-  the audio does not support the change. In between, the audio does not decide.
-- A moderately negative delta never vetoes a fix the meaning demands: the aligner mishears
-  the same way the transcriber did.
-- `abstain` (punctuation, particles or homophones only): the audio cannot judge.
-  `reliable: false`: the aligner barely hears the span; ignore every delta for that cue.
-- `substituted` / `unscorable` list characters the aligner has no token for. Both weaken the
-  score.
+Each candidate gets a delta against the draft and a verdict: `favours` (the audio clearly fits
+it better), `against` (the audio does not support the change), `undecided`, or `abstains`
+(punctuation, particles or homophones only: the audio cannot judge). A cue the aligner barely
+hears gets no verdict at all. Characters marked "no token" or "scored with" weaken a score.
+`undecided` and a mildly negative delta never veto a fix the meaning demands: the aligner
+mishears the same way the transcriber did.
 
 ## The witnesses
 
@@ -86,7 +81,9 @@ proper names, and writes some particles with other characters (so particles are 
 reading). `ccp cue` lists every reading it records for the draft's characters; the first is the
 most common.
 
-**Strict corpus (`ccp corpus`).** About 110k hand-standardized subtitle lines.
+**Strict corpus (`ccp corpus`).** About 110k hand-standardized subtitle lines, on machines
+that have the CantoCaptions library and the dataset's tiers; elsewhere `ccp corpus` answers
+`unavailable` and there is no corpus evidence.
 Counts show what the standard writes and which particles habitually follow a phrase
 (一定…喇 far more than 一定…啦). A tendency, not a rule. A comma ends the clause, so the next
 clause's particles are never counted.

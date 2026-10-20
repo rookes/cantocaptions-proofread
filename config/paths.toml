@@ -1,13 +1,15 @@
 # Where the sibling repositories and data live. Relative paths are resolved from the
-# project root. Override any of these in config/paths.local.toml (gitignored).
+# project root. Override any of these in config/paths.local.toml (gitignored), most easily
+# with `uv run ccp setup --set KEY=PATH`. Every sibling is optional: `ccp setup` says what
+# each one enables and what happens without it.
 
 [paths]
 cantocaptions = "../CantoCaptions"                  # the subtitle library (git repo)
 subtitles = "../CantoCaptions/Subtitles"            # root that manifest srt_path values are relative to
 dataset = "../cantocaptions-dataset"                # data/manifest.json, data/std/episodes.json, rules/
-cantocaptions_ai = "../cantocaptions-ai"            # ASR / alignment / isolation (GPU tools run in its venv)
-sub_convert = "../sub-convert"                      # PGS/VobSub OCR
+cantocaptions_ai = "../cantocaptions-ai"            # ASR / alignment / OCR (GPU tools run in its venv)
 media_root = "E:/dataset_media"                     # root that manifest media_path values are relative to
+media_dirs = []                                     # your own media folders, searched by name (ccp setup --add-media-dir)
 dictionary = "dictionaries/words-hk-full-bilingual.json"
 work = "work"                                       # per-episode workspaces
 cache = "cache"                                     # built indexes (safe to delete)

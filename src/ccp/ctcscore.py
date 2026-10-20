@@ -34,6 +34,16 @@ from .jyutping import is_sound
 
 UNRELIABLE_MEDIAN_PEAK = 0.1
 NEG_INF = -np.inf
+# How a delta (candidate minus draft, in nats) reads: above FAVOURS the audio clearly fits
+# the candidate better; below AGAINST (a candidate that adds or drops a word, usually) it does
+# not support the change; in between the audio does not decide.
+FAVOURS, AGAINST = 3.0, -6.0
+
+
+def verdict(delta: float | None) -> str:
+    if delta is None:
+        return "unscorable"
+    return "favours" if delta >= FAVOURS else "against" if delta <= AGAINST else "undecided"
 
 
 # ---------------------------------------------------------------------------- text
@@ -68,8 +78,11 @@ def strip_final_particles(text: str) -> str:
 @lru_cache(maxsize=1)
 def _numeral_readings():
     """cantocaptions-ai's numeral_readings, loaded straight from its file: the module imports
-    only `re`, so this keeps the exact pipeline behaviour without its package or torch."""
+    only `re`, so this keeps the exact pipeline behaviour without its package or torch. Without
+    cantocaptions-ai (stored emissions from another machine) a text is scored as written."""
     src = paths.get("cantocaptions_ai") / "cantocaptions_ai" / "languages" / "yue" / "numeral_candidates.py"
+    if not src.is_file():
+        return lambda text: [text]
     spec = importlib.util.spec_from_file_location("_ccai_numeral_candidates", src)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

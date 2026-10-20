@@ -1,4 +1,5 @@
-# Settings for the convention checks (the `L` lines in `ccp render`, `ccp clean --lint`). The bulk of the variant rules is read at run time from
+# Settings for the convention checks (the `L` lines in `ccp render`, `ccp clean --lint`; test
+# a change with scripts/lint_rules.py). The bulk of the variant rules is read at run time from
 # cantocaptions-dataset/rules/standardization.toml so the two never drift; this file
 # only adjusts it and adds what that file does not cover.
 
@@ -182,6 +183,13 @@ exceptions = []
 form = "看"
 cantonese = "睇"
 exceptions = ["看法", "看守", "看護", "看待", "看重", "看齊", "看似", "看來", "看好", "好看", "難看", "看中", "看破", "看透", "看不起", "看門", "看更", "看管", "觀看", "查看", "看台", "收看", "小看", "看見", "看相", "看錯"]
+
+# Spellings the review stream treats as the same word when it compares a recogniser's text
+# with the draft (a difference only here is no evidence, so no ≠ line is shown). Every firm
+# one-character variant rule above (and in standardization.toml) is folded already; list here
+# only pairs that are not a rule of their own. 地 -> 哋: recognisers write 我地 for 我哋.
+[asr_fold]
+"地" = "哋"
 
 [limits]
 line_width = 17.5        # CJK counts 1, half-width 0.5 (CantoCaptions README)
