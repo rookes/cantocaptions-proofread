@@ -34,7 +34,9 @@ reference and a knowledge of Cantonese catches most of them from the text alone.
    is, run `ccp copy-draft` now.
 2. **Reference.** `ccp reference <id>`: with a reference this pass fixes far more. Note its
    `label`.
-3. **Glossary.** Read `glossaries/<show_slug>.md` if it exists.
+3. **Glossary.** Read `glossaries/<show_slug>.md` if there is one. At the end you add to it
+   (`proofread-subtitles` step 8): take the names from the reference and your fixes, never
+   from the machine draft's own spellings.
 4. **Mechanical fixes.** `ccp clean <id> --lint --dry-run` lists the spelling-variant, glossary
    and punctuation fixes. Add `--skip-lint <cue>` where one would be wrong (a variant inside a
    name, a quotation or a longer word), then run it without `--dry-run`.
@@ -102,7 +104,9 @@ request says (`proofread-subtitles/references/report-and-apply.md`). In the repo
 edits are compact rows with their reason and audio clip; the user can undo or reword any of them.
 Summarise the edits by category and the queries left open; say the cleanup used the text and the
 reference only, and that a full pass (realign + proofread with audio evidence) is available.
-Pass on the report's `about_this_proofread` lines as they are (`proofread-subtitles` step 8).
+Before the report, update the glossary (`proofread-subtitles` step 8), and say in the summary how many
+names it gained. Pass on the report's `about_this_proofread` lines as they are
+(`proofread-subtitles` step 9).
 Never describe an edit as a particle or "dialect" correction: the cleanup makes none.
 
 **Full pass** (the user asked for a full or thorough proofread, a realign, or finished quality).

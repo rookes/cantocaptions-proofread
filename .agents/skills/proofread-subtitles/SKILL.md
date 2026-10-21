@@ -45,8 +45,8 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
 4. **Evidence.** `uv run ccp evidence <id>`. Convention checks come with `ccp render` (`L` lines).
    If `ccp status` shows `tools.audio_evidence: false` (no cantocaptions-ai on this machine),
    skip this step and see "Without audio" below.
-5. **Glossary.** Read `glossaries/<show_slug>.md` if it exists; add names you settle while
-   reading (format in `references/reading.md`).
+5. **Glossary.** Read `glossaries/<show_slug>.md` if there is one: its names, and the
+   misspellings it lists under `Avoid`. You add to it in step 8.
 6. **Review pass.** Save the review stream (`ccp render <id> --save`) and read it with your
    file-reading tool, from the first cue to the last, a few hundred lines at a time. Search it
    whenever another cue matters (how a name is written elsewhere, an earlier mention). Note
@@ -64,9 +64,20 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
    Every suspect ends with exactly one record (fix, suggest, query or keep), each with its
    reason. Record each decision as you make it (several at a time with `--json-file` is
    fine) and do not revisit it: the record holds it.
-8. **Output.** Build the report and/or apply, as the user asked
+8. **Update the glossary.** Every pass ends with this step, whether or not a name needed
+   fixing: the glossary is what lets the next episode, or one without a reference, get the
+   names right. Create `glossaries/<show_slug>.md` if there is none (format in
+   `references/reading.md`), then add each recurring name this episode uses that it does not
+   have yet: characters (full names, and the nicknames people use), places, groups, ranks and
+   titles, recurring things with invented names. Write each as the subtitles write it after
+   your fixes, with its source (usually the reference). Put a misspelling you fixed or saw
+   under `Avoid`. Your review notes and `work/<id>/review.txt` are enough: do not search the
+   audio or the corpus for this. Only an episode with no recurring names at all (a
+   documentary, say) adds nothing; then say so in the summary.
+9. **Output.** Build the report and/or apply, as the user asked
    (`references/report-and-apply.md`). Summarise: records by grade, the most important
-   corrections in one line each, and the report's `tell_the_user` line. Then pass on the report's
+   corrections in one line each, the glossary (created or updated, and how many names it
+   gained), and the report's `tell_the_user` line. Then pass on the report's
    `about_this_proofread` lines as they are, under "About this proofread". They are facts
    for the user about how the lines were found; they are not a task, so do not go back and
    change records because of them.

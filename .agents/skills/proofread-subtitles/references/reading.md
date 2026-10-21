@@ -50,7 +50,8 @@ read the `Avoid` column.
 | 西甘希娜 | sai1 gam1 hei1 naa4 | | district; S1E01 episode title |
 ```
 
-Add a name only with a source you can cite (the reference, a strict episode of the same show,
-or a clear majority in the file). Full names and nicknames are separate rows. A glossary entry
+Give every name a source you can cite: usually the reference, else a strict episode of the
+same show or the file's own consistent spelling. A name the episode uses once and never again
+can stay out; every recurring one goes in (`proofread-subtitles` step 8). Full names and nicknames are separate rows. A glossary entry
 overrides the reference: when a show's Cantonese dub renames a character, record the dub's name
 with the reference's form under `Avoid` and a note saying so.

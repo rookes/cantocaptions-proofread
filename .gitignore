@@ -8,3 +8,6 @@ config/paths.local.toml
 # Junction to .agents/skills, created by scripts/setup.ps1
 .claude/skills
 
+# Show glossaries are built per machine by the agent; only the folder's README is tracked.
+glossaries/*
+!glossaries/README.md
