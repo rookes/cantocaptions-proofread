@@ -13,13 +13,32 @@ corrections to the subtitle file in place. It never commits.
 
 ## Setup
 
-Requirements: Windows, [uv](https://docs.astral.sh/uv/), ffmpeg on PATH, Node.js or deno (yt-dlp
-needs a JavaScript runtime for YouTube; update yt-dlp with `uv lock --upgrade-package yt-dlp` when a
-site changes). The audio tools need an NVIDIA GPU (≥ 8 GB) and cantocaptions-ai.
+On Windows, from this folder:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts\setup.ps1
 ```
+
+It installs what is missing (uv, ffmpeg, the Python packages), builds the dictionary caches
+and ends with a short summary of what this machine has. Then open the folder in Claude Code or
+Antigravity and ask for a proofread. The agent runs the same check at the start of each
+session, runs the script itself if something is missing, and on first use asks where any
+optional repositories below are.
+
+Also useful: Node.js or deno, which `ccp fetch` needs to download from YouTube (update yt-dlp
+with `uv lock --upgrade-package yt-dlp` when a site changes), and, for the audio tools, an
+NVIDIA GPU (8 GB or more) with cantocaptions-ai.
+
+### Reviewing a report
+
+At the end of a proofread the agent opens the report in your browser. It is served from your
+own machine (`http://127.0.0.1:8765/r/<episode>/`), and your accept/reject choices save
+straight into the workspace as you go. Press **Done reviewing** and tell the agent. To view it
+inside the IDE instead, open the link in the IDE's browser panel (in VS Code-based editors:
+Command Palette → "Simple Browser: Show", then paste the link). `http://127.0.0.1:8765/` lists
+every report. Without the server (it stops after six idle hours; `ccp report <id>` starts it
+again), `work/<id>/report.html` still opens as a plain file, and **Export decisions** downloads
+a `decisions.json` to give the agent.
 
 ### Optional sibling repositories
 
@@ -108,8 +127,8 @@ profile so every session (including an agent's, if its terminal loads the profil
 | `ccp listen`, `ccp score` | (GPU) re-run recognisers on a cue; CTC-score candidate texts (from stored emissions, no GPU). Both take many cues from `--json-file` |
 | `ccp clean <id> --lint` / `--edits FILE` | text-only cleanup of machine-made drafts: bulk edits, recorded as flags and applied at once |
 | `ccp flag add/keep/update/list` | record each decision: grade fix / suggest / query / keep, with a required reason |
-| `ccp report <id>` | HTML report with clips, exports `decisions.json` |
-| `ccp apply <id> [--decisions …] [--include-suggest]` | apply corrections in place (text only, never commits) |
+| `ccp report <id>` | HTML report with clips, opened in the browser from a local server; decisions save into the workspace |
+| `ccp apply <id> [--reviewed \| --decisions …] [--include-suggest]` | apply corrections in place (text only, never commits) |
 
 ## Scoring from stored emissions
 

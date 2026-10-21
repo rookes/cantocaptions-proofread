@@ -46,6 +46,23 @@ def verdict(delta: float | None) -> str:
     return "favours" if delta >= FAVOURS else "against" if delta <= AGAINST else "undecided"
 
 
+# A delta this large is a decisive fit (the candidate is e^10, some 20,000 times, likelier).
+MUCH = 10.0
+
+
+def plain_fit(delta: float | None) -> str:
+    """The delta in the words a reviewer reads (and records should use): never the number."""
+    if delta is None:
+        return "cannot be checked against the audio"
+    if delta >= MUCH:
+        return "fits the audio much better than the draft"
+    if delta >= FAVOURS:
+        return "fits the audio better than the draft"
+    if delta <= AGAINST:
+        return "fits the audio worse than the draft"
+    return "the audio cannot tell it apart from the draft"
+
+
 # ---------------------------------------------------------------------------- text
 
 def final_particle_mask(text: str) -> list[bool]:

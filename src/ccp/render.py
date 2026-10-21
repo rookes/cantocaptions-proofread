@@ -5,7 +5,7 @@ placed under the cue it belongs to. Format (see the proofread-subtitles skill):
     R 媽媽一定坐立不安睡不著的
     ≠ft 你阿媽食多多亂瞓唔着㗎
     ≠qw [你]阿媽食攞攞攣，瞓唔著嘅
-    ! 多 0.00  都 0.00
+    ! hard to hear: 多 都
     L variant 俾→畀
     F#3 essential/mishearing → 阿媽實囉囉攣瞓唔着㗎
     --
@@ -84,6 +84,31 @@ def _ref_placement(cues: list[Cue], refs: list[dict]) -> dict[int, list[str]]:
     return placed
 
 
+def asr_differences(text: str, ev: dict) -> dict[str, dict]:
+    """The recognisers (ft, qw) whose hypothesis says something other than *text*: what the
+    review stream shows as ≠ lines."""
+    out = {}
+    for model in MODEL_TAGS:
+        hyp = ev.get("asr", {}).get(model)
+        if not hyp:
+            continue
+        full = hyp.get("edge_before", "") + hyp.get("text", "") + hyp.get("edge_after", "")
+        if content_key(full, model) != content_key(text, model):
+            out[model] = hyp
+    return out
+
+
+def hard_to_hear(ev: dict, differs: bool) -> list[str]:
+    """The characters the aligner barely heard, as the review stream shows them (`!`), weakest
+    first. Only shown when a recogniser differs too, or when there is no recogniser to compare
+    with: where the recognisers agree with the draft they are mostly noise (fast speech, music)
+    and only send the agent hunting."""
+    weak = [(ch, p) for ch, p, final in ev.get("peaks", []) if not final and p < WEAK_PEAK]
+    if not weak or not (differs or not ev.get("asr")):
+        return []
+    return [ch for ch, _ in sorted(weak, key=lambda x: x[1])[:MAX_WEAK]]
+
+
 def _asr_line(tag: str, hyp: dict) -> str:
     text = hyp.get("text", "")
     if not (text + hyp.get("edge_before", "") + hyp.get("edge_after", "")).strip():
@@ -146,22 +171,12 @@ def render(episode_id: str, start: int = 1, end: int | None = None, show_groups:
         out.append(line)
         for r in placed.get(c.pos, []):
             out.append(f"R {to_display(r)}")
-        differs = False
-        for model, tag in MODEL_TAGS.items():
-            hyp = ev.get("asr", {}).get(model)
-            if not hyp:
-                continue
-            full = (hyp.get("edge_before", "") + hyp.get("text", "") + hyp.get("edge_after", ""))
-            if content_key(full, model) != content_key(c.text, model):
-                out.append(_asr_line(tag, hyp))
-                differs = True
-        weak = [(ch, p) for ch, p, final in ev.get("peaks", []) if not final and p < WEAK_PEAK]
-        # Weak characters where the recognisers agree with the draft are mostly noise (fast
-        # speech, music) and only send the agent hunting; show them when they corroborate a
-        # recogniser that differs, or when there is no recogniser to compare with.
-        if weak and (differs or not ev.get("asr")):
-            weak = sorted(weak, key=lambda x: x[1])[:MAX_WEAK]
-            out.append("! " + "  ".join(f"{ch} {p:.2f}" for ch, p in weak))
+        differ = asr_differences(c.text, ev)
+        for model, hyp in differ.items():
+            out.append(_asr_line(MODEL_TAGS[model], hyp))
+        weak = hard_to_hear(ev, bool(differ))
+        if weak:
+            out.append("! hard to hear: " + " ".join(weak))
         if ev.get("speaker_change"):
             out.append(">> speaker change")
         for r in timing_by.get(c.pos, []):

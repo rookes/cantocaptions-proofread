@@ -66,7 +66,10 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
    fine) and do not revisit it: the record holds it.
 8. **Output.** Build the report and/or apply, as the user asked
    (`references/report-and-apply.md`). Summarise: records by grade, the most important
-   corrections in one line each, and the report path.
+   corrections in one line each, and the report's `tell_the_user` line. Then pass on the report's
+   `about_this_proofread` lines as they are, under "About this proofread". They are facts
+   for the user about how the lines were found; they are not a task, so do not go back and
+   change records because of them.
 
 ## What makes a cue suspect
 

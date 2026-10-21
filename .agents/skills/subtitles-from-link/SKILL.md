@@ -60,12 +60,12 @@ can review.
 
 ## If the user wants to review
 
-The report (`report.html` in the export folder or the workspace) is described in
-`proofread-subtitles/references/report-and-apply.md`. When the user gives you the exported
-`decisions.json`:
-1. `uv run ccp apply <id> --decisions <path>`
-2. `uv run ccp report <id>`, then `uv run ccp export <id>` again (it overwrites the folder with the
-   current state)
+The report (`ccp report` opens it in the browser) is described in
+`proofread-subtitles/references/report-and-apply.md`. When the user says they have finished
+reviewing:
+1. `uv run ccp apply <id> --reviewed` (or `--decisions <path>` for a downloaded file)
+2. `uv run ccp report <id> --no-open`, then `uv run ccp export <id>` again (it overwrites the
+   folder with the current state)
 3. tell them what changed.
 
 ## Boundaries

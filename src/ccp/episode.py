@@ -31,7 +31,8 @@ from . import locate, paths
 from .srtio import SrtFile
 
 DRAFT_DEPENDENT = ["evidence.jsonl", "groups.jsonl", "emissions", "lint.jsonl", "flags.jsonl",
-                   "report.html", "clips", "timing.jsonl", "timing_suggestions"]
+                   "report.html", "clips", "timing.jsonl", "timing_suggestions", "signals.json",
+                   "stats.json"]
 
 
 def _probe(ep: dict, audio_track: int | None) -> dict:

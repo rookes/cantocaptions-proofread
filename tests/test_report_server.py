@@ -1,0 +1,88 @@
+"""The local report server: serving a workspace's report and clips, saving the reviewer's
+decisions into it, refusing anything else; and `ccp apply --reviewed` reading them back."""
+import json
+import threading
+import urllib.error
+import urllib.request
+from http.server import ThreadingHTTPServer
+
+import pytest
+
+from ccp import cli, episode, flags, report_server
+
+
+@pytest.fixture
+def server(workspace, monkeypatch):
+    monkeypatch.setattr(report_server, "_work", lambda: workspace["work"].parent)
+    (workspace["work"] / "report.html").write_text("<!doctype html><p>report</p>", encoding="utf-8")
+    (workspace["work"] / "clips").mkdir()
+    (workspace["work"] / "clips" / "flag_1.m4a").write_bytes(bytes(range(256)) * 4)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), report_server.Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+def _get(url, headers=None):
+    req = urllib.request.Request(url, headers=headers or {})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status, r.read(), dict(r.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, e.read(), dict(e.headers)
+
+
+def _post(url, body, origin=None, ctype="application/json"):
+    headers = {"Content-Type": ctype}
+    if origin:
+        headers["Origin"] = origin
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_serves_the_report_and_clips_with_ranges(server):
+    status, body, _ = _get(server + "/r/t/")
+    assert status == 200 and b"report" in body
+    status, body, headers = _get(server + "/r/t/clips/flag_1.m4a", {"Range": "bytes=10-19"})
+    assert status == 206 and body == bytes(range(10, 20)) and headers["Content-Range"] == "bytes 10-19/1024"
+    assert _get(server + "/r/t/episode.json")[0] == 404           # only the report and its clips
+    assert _get(server + "/r/t/..%2F..%2Fpaths.toml")[0] == 404
+    assert _get(server + "/r/nope/")[0] == 404
+    assert b"/r/t/" in _get(server + "/")[1]                       # the index lists it
+
+
+def test_saves_decisions_from_the_page_only(server, workspace):
+    good = {"episode_id": "t", "decisions": [{"flag": 1, "decision": "accepted", "text": "你畀我啦"}]}
+    status, reply = _post(server + "/r/t/decisions", good, origin=server)
+    assert status == 200 and reply["ok"] and reply["saved"] == 1
+    saved = json.loads((workspace["work"] / "decisions.json").read_text(encoding="utf-8"))
+    assert saved["decisions"] == good["decisions"] and saved["saved"]
+    assert _post(server + "/r/t/decisions", good, origin="http://evil.example")[0] == 403
+    assert _post(server + "/r/t/decisions", good, origin=server, ctype="text/plain")[0] == 403
+    # A second save keeps the first as decisions.previous.json; GET returns the latest.
+    _post(server + "/r/t/decisions", {"decisions": []}, origin=server)
+    assert (workspace["work"] / "decisions.previous.json").exists()
+    assert json.loads(_get(server + "/r/t/decisions")[1])["decisions"] == []
+
+
+def test_apply_reviewed_uses_the_saved_decisions(workspace, capsys):
+    f = flags.add(workspace["id"], 1, "standard", "fix", "你畀我啦", [], "俾 is not the convention: 畀")
+    with pytest.raises(SystemExit, match="no saved decisions yet"):
+        cli.main(["apply", workspace["id"], "--reviewed"])
+    episode.path(workspace["id"], "decisions.json").write_text(json.dumps(
+        {"decisions": [{"flag": f["id"], "decision": "accepted", "text": "你畀我啦"}]}), encoding="utf-8")
+    cli.main(["apply", workspace["id"], "--reviewed"])
+    out = json.loads(capsys.readouterr().out)
+    assert [a["to"] for a in out["applied"]] == ["你畀我啦"]
+
+
+def test_report_link_without_the_server(workspace):
+    page = workspace["work"] / "report.html"
+    page.write_text("x", encoding="utf-8")
+    link = cli._report_link(workspace["id"], page, serve=False, open_browser=False)
+    assert link["open"].startswith("file:") and "Export decisions" in link["tell_the_user"]
+    assert "--decisions <path>" in link["saves_decisions"]

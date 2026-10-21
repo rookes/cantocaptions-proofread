@@ -38,11 +38,15 @@ def test_file_of_cues_scores_each_and_reports_bad_items(workspace, scorer, capsy
     ], bom=True)                                                     # PowerShell writes a BOM
     cli.main(["score", "t", "--json-file", f])
     out = capsys.readouterr().out
-    assert "+4.2  favours" in out and "-0.8  undecided" in out and "-7.5  against" in out
-    assert "cue 3  -走喇⏎-等埋我啊  (the aligner barely hears this cue: no verdict)" in out
+    # Verdicts in words a record can quote; no numbers in the text output (they are in --json).
+    assert "favours    阿媽實囉囉攣瞓唔着㗎: fits the audio better than the draft" in out
+    assert "undecided  阿媽實囉攣瞓唔着㗎: the audio cannot tell it apart from the draft" in out
+    assert "against    阿媽瞓唔着㗎: fits the audio worse than the draft" in out
+    assert "nats" not in out and "+4.2" not in out
+    assert "cue 3  -走喇⏎-等埋我啊  (the audio barely matches this cue at all: no verdict)" in out
     assert "cue 9  error: no cue 9" in out
     assert "cue 1  error: no candidate texts other than the draft's own" in out
-    assert "abstains   一定得嘅喇  (differs only in sentence-final particles)" in out
+    assert "abstains   一定得嘅喇: the audio cannot judge this difference  (differs only in sentence-final particles)" in out
     assert len(scorer) == 3
     assert scorer[1][3] == ["-走喇\n-等我啊"]                          # ⏎ read as a line break
     assert scorer[2][:2] == (8.0, 11.0)                              # an explicit pad is not clamped

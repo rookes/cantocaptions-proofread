@@ -92,6 +92,27 @@ def _relevant(key: str, caps: dict) -> bool:
     return True
 
 
+SETUP_SCRIPT = r"powershell -ExecutionPolicy Bypass -File scripts\setup.ps1"
+
+
+def environment() -> dict:
+    """What this repo itself needs: programs on PATH, the skills link Claude Code reads, and
+    the dictionary caches (built once, about a minute). scripts/setup.ps1 provides all of it."""
+    import shutil
+    link = paths.ROOT / ".claude" / "skills"
+    cache = paths.get("cache")
+    env = {
+        "ffmpeg": bool(shutil.which("ffmpeg")), "ffprobe": bool(shutil.which("ffprobe")),
+        "skills_linked": (link / "investigate-line" / "SKILL.md").exists(),
+        "caches_built": (cache / "wordshk.pkl").exists() and (cache / "readings.json").exists(),
+        "js_runtime": bool(shutil.which("node") or shutil.which("deno")),
+    }
+    needed = [k for k in ("ffmpeg", "ffprobe", "skills_linked", "caches_built") if not env[k]]
+    if needed:
+        env["run_setup_script"] = {"missing": needed, "command": SETUP_SCRIPT}
+    return env
+
+
 def status() -> dict:
     state = paths.setup_state()
     caps = capabilities()
@@ -104,14 +125,50 @@ def status() -> dict:
                         "declined": key in state["declined"]})
     first_run = not state["completed"]
     ask = [m["key"] for m in missing if first_run and not m["declined"]]
-    out = {"first_run": first_run, "capabilities": caps, "missing": missing, "ask": ask}
-    if ask:
+    out = {"first_run": first_run, "environment": environment(), "capabilities": caps,
+           "missing": missing, "ask": ask}
+    if out["environment"].get("run_setup_script"):
+        out["next"] = (f"Run `{SETUP_SCRIPT}` first (it installs what is missing: "
+                       f"{', '.join(out['environment']['run_setup_script']['missing'])}), then `ccp setup` again.")
+    elif ask:
         out["next"] = ("First use: ask the user, in one message, where each of these is (or whether "
                        "they have it at all), saying what each enables. Then `ccp setup --set KEY=PATH`, "
                        "`--add-media-dir PATH`, `--decline KEY` for what they do not have, and `--done`.")
     elif first_run:
         out["next"] = "Nothing to ask: run `ccp setup --done`."
     return out
+
+
+def as_text(st: dict) -> str:
+    """`ccp setup --text`: the same report for a person, a few short lines."""
+    env, caps = st["environment"], st["capabilities"]
+    ok = lambda b: "ok  " if b else "--  "
+    lines = ["This repo",
+             f"  {ok(env['ffmpeg'] and env['ffprobe'])}ffmpeg and ffprobe"
+             + ("" if env["ffmpeg"] and env["ffprobe"] else "  (needed for audio and clips)"),
+             f"  {ok(env['caches_built'])}dictionary caches",
+             f"  {ok(env['skills_linked'])}skills linked for Claude Code"]
+    if not env["js_runtime"]:
+        lines.append("  note no Node.js or deno: only needed to download from YouTube (`ccp fetch`)")
+    lines += ["", "Optional repositories (the proofreader works without them)"]
+    found = {"cantocaptions": caps["library"], "dataset": caps["dataset"],
+             "cantocaptions_ai": caps["audio_evidence"]}
+    names = {"cantocaptions": "CantoCaptions library", "dataset": "cantocaptions-dataset",
+             "cantocaptions_ai": "cantocaptions-ai"}
+    for key, name in names.items():
+        if found[key]:
+            extra = " (with OCR)" if key == "cantocaptions_ai" and caps["ocr"] else ""
+            lines.append(f"  ok  {name}{extra}: {paths.get(key)}")
+        else:
+            lines.append(f"  --  {name}: not found. Without it: {RESOURCES[key]['without']}")
+    dirs = caps["media_dirs"]
+    lines.append(f"  {'ok  ' if dirs else '    '}media folders: {', '.join(dirs) if dirs else 'none'}")
+    if st.get("next"):
+        lines += ["", "Next: " + st["next"]]
+    elif not st.get("ask"):
+        lines += ["", "Ready. Open this folder in Claude Code or Antigravity and ask, for example: "
+                      "\"Proofread Attack on Titan S1E03 and give me a report.\""]
+    return "\n".join(lines)
 
 
 def _check(key: str, value: str) -> str | None:

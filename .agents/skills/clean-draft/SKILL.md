@@ -102,6 +102,7 @@ request says (`proofread-subtitles/references/report-and-apply.md`). In the repo
 edits are compact rows with their reason and audio clip; the user can undo or reword any of them.
 Summarise the edits by category and the queries left open; say the cleanup used the text and the
 reference only, and that a full pass (realign + proofread with audio evidence) is available.
+Pass on the report's `about_this_proofread` lines as they are (`proofread-subtitles` step 8).
 Never describe an edit as a particle or "dialect" correction: the cleanup makes none.
 
 **Full pass** (the user asked for a full or thorough proofread, a realign, or finished quality).

@@ -14,7 +14,7 @@ finds cue 37), followed by whatever evidence exists for it:
 - `≠ft …`: the fine-tuned recogniser heard different *content*
 - `≠qw …`: stock Qwen3-ASR heard different content
 - `[你]` inside an ASR line: heard in the padding just outside the cue: a word the cue may be missing, or the neighbour's
-- `! 多 0.00  都 0.00`: weak characters: the aligner hears little of them where the draft puts them (shown only beside a recogniser that differs)
+- `! hard to hear: 多 都`: characters the aligner barely matches to the audio where the draft puts them (shown only beside a recogniser that differs)
 - `L kind found→suggestion`: a lint hit (`L invisible U+200B …`: an invisible character; propose the cue's text as shown to remove it)
 - `T …`: realign doubts this cue's timing
 - `F#3 fix/mishearing/open → …`: a record you already made
@@ -31,7 +31,7 @@ each group of cues (`G12 ft …`), for when a per-cue ASR line looks cut oddly a
 
 One block per cue: the draft with its Jyutping (and other readings), `R`, the neighbouring cues
 (`--context N` for more), then each recogniser marked `=` (same words) or `≠` (with its
-Jyutping), a `check` line when they differ, weak characters (peak < 0.3), lint and records.
+Jyutping), a `check` line when they differ, characters that are hard to hear, lint and records.
 A `raw` line under the draft shows the cue as written when it holds markup or invisible
 characters (spelled out as `⟨U+200B⟩`).
 Ask for all your suspects in one call. `--json` gives the full structure.

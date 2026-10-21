@@ -1,6 +1,6 @@
 ---
 name: investigate-line
-description: Decide what a suspect Cantonese subtitle line really says and record the decision (fix, suggest, query or keep) with its reason. Uses the reference subtitle for meaning, the line's audio (two speech recognisers, re-listening, CTC scoring) for wording, Jyutping sound-alike search over the words.hk dictionary, and usage in the standardized CantoCaptions corpus. Use for every suspect line in a proofread, or when the user asks what a line actually says.
+description: Decide what a suspect Cantonese subtitle line really says and record the decision (fix, suggest, query or keep) with its reason. Uses the reference subtitle for meaning, the line's audio (two speech recognisers, re-listening, scoring candidates against the audio) for wording, Jyutping sound-alike search over the words.hk dictionary, and usage in the standardized CantoCaptions corpus. Use for every suspect line in a proofread, or when the user asks what a line actually says.
 ---
 
 # Decide a suspect line
@@ -84,16 +84,22 @@ a fix applied.
 ```
 uv run ccp flag add <id> --cue 37 --category mishearing --grade fix \
   --proposed "阿媽實囉囉攣瞓唔着㗎" \
-  --reason "食多都亂 makes no sense; R 一定坐立不安 is 實 'certainly' + 囉囉攣 'restless' (sat6 lo1 lo1 lyun1), which keeps the draft's tones" \
+  --reason "食多都亂 makes no sense; the reference 一定坐立不安 is 實 'certainly' + 囉囉攣 'restless' (sat6 lo1 lo1 lyun1), which keeps the draft's tones" \
   --evidence "reference: 一定坐立不安 = 實囉囉攣" --evidence "asr_qwen: 食攞攞攣 (lo2 lo2 lyun1)"
 
 uv run ccp flag keep <id> --cue 251 \
-  --reason "唔抵可憐 m4 dai2 'not worth pitying' is exactly R 不值得可憐; both recognisers' 唔使 'no need to' does not fit R, so they misheard"
+  --reason "唔抵可憐 m4 dai2 'not worth pitying' is exactly the reference 不值得可憐; both recognisers' 唔使 'no need to' does not fit the reference, so they misheard"
 ```
 
 - **`--reason` is required**: one or two sentences saying what is wrong (or why the line is
   right) and why the proposal is right, naming the sounds (Jyutping) and the meaning. The
   report shows it to the reviewer as "Reason:".
+- **Write the reason and the evidence for the reviewer**: a Cantonese speaker who knows the
+  subtitles, not the tools. Use plain words and no tool numbers or jargon: not "CTC", "nats",
+  "+5.6", "peak 0.00", "delta", "score", "sound_distance", "ft"/"qw" or "R". Say instead "the
+  audio fits 點解會 much better than the draft", "會 is hard to hear", "both speech recognisers
+  heard 點解會", "the reference (為什麼團長會知道) asks why", "點會 and 點解會 sound almost the
+  same". `ccp score` and `ccp sounds-like` print these phrases for you to quote.
 - `--proposed` is the cue's **complete** new text (`⏎` for a line break), for fix and suggest
   only. A query has no `--proposed`; give candidates with `--alt "<full text>"` (repeatable).
 - `--category`: `mishearing` (sound-alikes of what was said), `missing` / `extra` (a word
@@ -101,8 +107,9 @@ uv run ccp flag keep <id> --cue 251 \
   against the conventions), `particle`, `punctuation`, `segmentation` / `timing` (see the
   proofread skill), `other`.
 - `--evidence "source: detail"` for each witness that mattered; sources: `reference`,
-  `asr_ft`, `asr_qwen`, `listen`, `ctc`, `sounds_like`, `dict`, `corpus`, `lint`,
-  `glossary`, `context`. A `mishearing`, `missing`, `extra` or `other` correction on a cue
+  `asr_ft`, `asr_qwen`, `listen`, `ctc` (the audio check: `score`), `sounds_like`, `dict`,
+  `corpus`, `lint`, `glossary`, `context`. The detail is plain words too
+  (`ctc: fits the audio much better than the draft`). A `mishearing`, `missing`, `extra` or `other` correction on a cue
   that has an `R` line must include a `reference:` entry saying how its meaning matches `R`;
   the tool refuses it otherwise. If you cannot write that line honestly, the fix is wrong.
 - Many records at once: a JSON list of objects with the same keys (`cue`, `category`,

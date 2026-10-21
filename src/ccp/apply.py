@@ -66,6 +66,17 @@ def select(episode_id: str, decisions: Path | None, include_suggest: bool,
             if f is None:
                 continue
             already = f["status"] == "applied"
+            # The reviewer's verdict, kept for the pass statistics: they agreed, reworded the
+            # change, turned it down, or corrected a line the agent had kept.
+            reviewer_text = from_display(d["text"]) if d.get("text") else None
+            if d["decision"] == "rejected":
+                f["review"] = "rejected"
+            elif f["grade"] == "keep":
+                f["review"] = "corrected"
+            elif reviewer_text and reviewer_text != f.get("proposed"):
+                f["review"] = "edited"
+            else:
+                f["review"] = "accepted"
             if d["decision"] == "rejected":
                 if already and not f.get("proposed_cues"):
                     # The reviewer rejects a correction the agent already applied: undo it.

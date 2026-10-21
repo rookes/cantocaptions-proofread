@@ -19,18 +19,33 @@ Decide before applying anything, from the user's request:
 ## The report
 
 `uv run ccp report <id>` writes `work/<id>/report.html`, with an audio clip (cue ± 1 s) for every
-record (`--video` for 480p video clips). It opens from disk. Sections: Fixes, Suggestions,
-Queries, Cleanup pass (compact rows), and a collapsed "Checked and kept". Each card shows the
-draft and proposal with the changes marked, the **Reason**, the reference line, both ASR lines,
-the neighbouring cues and the evidence. The reviewer accepts (optionally editing the text) or
-rejects each one, then **Export decisions** downloads `decisions.json`. Tell the user the path
-and that they can hand that file back to you. If the output reports failed clips, say so and
-quote `first_error`.
+record (`--video` for 480p video clips), and opens it in the user's browser from a small local
+server (`open` in the output: `http://127.0.0.1:…/r/<id>/`). Sections: Fixes, Suggestions,
+Questions, Cleanup pass (compact rows), and a collapsed "Checked and kept". Each card shows the
+draft and proposal with the changes marked, the **Reason**, the reference line (`REF`), what the
+two recognisers heard (`CC`, `Qw`), the neighbouring lines (`prev`, `next`) and the evidence,
+and in its corner what pointed the line out: a tool (conventions, recognisers, hard to hear,
+timing) or the agent alone. The foot of the page, "About this proofread", has the statistics
+`ccp report` prints as `about_this_proofread`. The reviewer accepts (optionally editing the text) or
+rejects each one. Their choices save into the workspace as they go; **Done reviewing** saves
+them once more.
+
+Give the user the output's `tell_the_user` line as it is: it says whether the report opened and
+how to finish. Then wait. When they say they are done, `uv run ccp status <id>` shows
+`report.decisions_saved`, and you apply them with `--reviewed` (below).
+
+- Rebuilding a report the user already has open (after applying, say): add `--no-open`, and
+  tell them to reload the page.
+- If the output has a `server` note, the server could not start. The page then works as a
+  plain file: the user presses **Export decisions**, which downloads `decisions.json`, and
+  gives you its path (`--decisions <path>` below). `--no-serve` does the same on purpose.
+- If the output reports failed clips, say so and quote `first_error`.
 
 ## Applying
 
 Only when the user asked for edits:
-1. **From the reviewer's decisions** (preferred): `uv run ccp apply <id> --decisions <path>`.
+1. **From the reviewer's decisions** (preferred): `uv run ccp apply <id> --reviewed` (the
+   decisions they saved from the report), or `--decisions <path>` for a downloaded file.
    It applies exactly the accepted records with the reviewer's text, undoes rejected
    corrections that were already applied, and re-words those the reviewer edited.
 2. **Directly**, when the user asked for that: `uv run ccp apply <id>` applies every `fix`;

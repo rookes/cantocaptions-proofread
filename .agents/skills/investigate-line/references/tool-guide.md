@@ -32,12 +32,13 @@ cue's group; the result says when it had to stop at the group's edge.
 
 ### Reading a score
 
-Each candidate gets a delta against the draft and a verdict: `favours` (the audio clearly fits
-it better), `against` (the audio does not support the change), `undecided`, or `abstains`
-(punctuation, particles or homophones only: the audio cannot judge). A cue the aligner barely
-hears gets no verdict at all. Characters marked "no token" or "scored with" weaken a score.
-`undecided` and a mildly negative delta never veto a fix the meaning demands: the aligner
-mishears the same way the transcriber did.
+Each candidate gets a verdict against the draft, and the same in plain words: `favours` (fits
+the audio better, or much better, than the draft), `against` (fits the audio worse), `undecided`
+(the audio cannot tell them apart), or `abstains` (punctuation, particles or homophones only:
+the audio cannot judge). A cue the audio barely matches at all gets no verdict. Characters that
+"cannot be checked" or were "checked as" another character weaken a verdict. `undecided`, and
+even `against` by a little, never veto a fix the meaning demands: the aligner mishears the same
+way the transcriber did. Quote the plain words in your records, never a number.
 
 ## The witnesses
 
@@ -66,9 +67,9 @@ the line most likely sounds, not what it means. They share mishearings, so their
 settles a fix only when the fix also means what `R` says. One recogniser alone is weak.
 Neither is evidence about particles.
 
-**Aligner peaks (`!`, `weak`).** How well each draft character matches the audio where the
-aligner placed it. Low peaks (< 0.05) catch about half of real character errors, at about one
-real error per five flagged characters: a place to look, not a verdict. It is near-deaf on
+**Hard to hear (`! hard to hear`).** Draft characters the aligner barely matches to the audio
+where it placed them. They catch about half of real character errors, at about one real error
+per five characters shown: a place to look, not a verdict. It is near-deaf on
 fast speech, shouting, singing and music, and barely hears particles (never shown).
 
 **Re-listening (`ccp listen`).** Both recognisers again with wider padding (1 s by default),

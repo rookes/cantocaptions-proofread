@@ -66,12 +66,26 @@ def cmd_status(a):
         "reference": json.loads(ref.read_text(encoding="utf-8")) if ref.exists() else None,
         "evidence": (w / "evidence.jsonl").exists(),
         "emissions": (w / "emissions" / "tokens.json").exists(),
-        "flags": flags.summary(rows), "report": (w / "report.html").exists(),
+        "flags": flags.summary(rows), "report": _report_status(a.id, w),
         "prunable_mb": reclaimable_mb(a.id),
         "gpu_server": gpu_bridge.server_status(),
         **({"pruned": ep["pruned"]} if ep.get("pruned") else {}),
         "tools": _tools(),
     })
+
+
+def _report_status(episode_id: str, w: Path) -> dict | None:
+    """The report, where it is served, and the decisions the reviewer saved from it."""
+    if not (w / "report.html").exists():
+        return None
+    from . import report_server
+    out = {"file": str(w / "report.html"), "url": report_server.report_url(episode_id)}
+    saved = w / "decisions.json"
+    if saved.exists():
+        d = json.loads(saved.read_text(encoding="utf-8"))
+        out["decisions_saved"] = {"at": d.get("saved"), "count": len(d.get("decisions", [])),
+                                  "apply_with": f"ccp apply {episode_id} --reviewed"}
+    return out
 
 
 def _tools() -> dict:
@@ -84,9 +98,10 @@ def _tools() -> dict:
 def cmd_setup(a):
     from . import setup
     if a.set or a.add_media_dir or a.remove_media_dir or a.decline or a.done:
-        return _out(setup.apply(a.set or [], a.add_media_dir or [], a.remove_media_dir or [],
-                                a.decline or [], a.done))
-    _out(setup.status())
+        st = setup.apply(a.set or [], a.add_media_dir or [], a.remove_media_dir or [], a.decline or [], a.done)
+    else:
+        st = setup.status()
+    _out(setup.as_text(st) if a.text else st)
 
 
 def cmd_reference(a):
@@ -243,10 +258,10 @@ def _cue_text(d: dict) -> str:
     if d["weak"]:
         content = [w for w in d["peaks"].split("  ") if w]
         if len(d["weak"]) >= max(4, len(content) - 1):
-            lines.append(f"weak   {len(d['weak'])} of {len(content)} characters: the aligner hears almost none of "
-                         "this cue (no speech, on-screen text, music or fast speech)")
+            lines.append(f"hard   to hear: {len(d['weak'])} of {len(content)} characters, almost the whole cue "
+                         "(no speech, on-screen text, music or fast speech)")
         else:
-            lines.append("weak   " + "  ".join(f"{ch} {p:.2f}" for ch, p in d["weak"]))
+            lines.append("hard   to hear: " + " ".join(ch for ch, _ in sorted(d["weak"], key=lambda x: x[1])))
     for r in d["lint"]:
         if r["kind"] == "realign_suspect":
             lines.append(f"timing realign doubts this cue: {r['reason']}")
@@ -281,8 +296,8 @@ def cmd_sounds_like(a):
     for m in matches:
         senses = dictionary.lookup(m.term)
         gloss = next((s for s in senses if s.pos), None)
-        row = {"term": m.term, "jyutping": m.jyutping, "score": m.score, "per_hyp": m.per_hyp,
-               "replaced": m.replaced}
+        row = {"term": m.term, "jyutping": m.jyutping, "sounds": sound.plain_distance(m.score),
+               "against_each": [sound.plain_distance(x) for x in m.per_hyp], "replaced": m.replaced}
         if m.in_hyp:
             row["already_in_hyp"] = m.in_hyp
         if gloss:
@@ -448,38 +463,38 @@ def cmd_score(a):
 
 
 def _score_text(results: list[dict]) -> str:
-    """One block per cue: the draft, then each candidate with its delta and what it means."""
-    from .ctcscore import AGAINST, FAVOURS, verdict
+    """One block per cue: the draft, then each candidate with how it fits the audio, in the
+    words a record should use (the numbers are in --json)."""
+    from .ctcscore import plain_fit, verdict
     from .srtio import to_display
-    out = [f"# delta = candidate minus draft (nats): favours ≥ +{FAVOURS:g} · against ≤ {AGAINST:g} "
-           "· undecided between"]
+    out = ["# each candidate against the draft: favours / undecided / against, then the same in "
+           "plain words for your records"]
     for r in results:
         if "error" in r:
             out.append(f"{r['key']}  error: {r['error']}")
             continue
-        notes = [] if r["reliable"] else ["the aligner barely hears this cue: no verdict"]
+        notes = [] if r["reliable"] else ["the audio barely matches this cue at all: no verdict"]
         if r.get("span"):
             notes.append(r["span"])
         if r.get("draft_unscorable"):
-            notes.append("no token for " + "".join(r["draft_unscorable"]) + " in the draft")
+            notes.append("".join(r["draft_unscorable"]) + " in the draft cannot be checked")
         out.append(f"{r['key']}  {to_display(r['draft'])}" + (f"  ({'; '.join(notes)})" if notes else ""))
         for c in r["candidates"]:
             extra = []
             if c.get("abstain"):
-                delta, word = "", "abstains"
+                word, phrase = "abstains", "the audio cannot judge this difference"
                 extra.append(c["abstain"])
             elif not r["reliable"]:
-                delta, word = "", "-"
+                word, phrase = "-", "no verdict"
             else:
-                delta = f"{c['delta']:+.1f}" if c["delta"] is not None else ""
-                word = verdict(c["delta"])
+                word, phrase = verdict(c["delta"]), plain_fit(c["delta"])
             if c.get("substituted"):
-                extra.append("scored with " + ", ".join(c["substituted"]))
+                extra.append("checked as " + ", ".join(c["substituted"]))
             if c.get("unscorable"):
-                extra.append("no token for " + "".join(c["unscorable"]))
+                extra.append("".join(c["unscorable"]) + " cannot be checked")
             if c.get("scored_as"):
-                extra.append(f"scored as {c['scored_as']}")
-            out.append(f"  {delta:>6}  {word:<10} {to_display(c['text'])}"
+                extra.append(f"read as {c['scored_as']}")
+            out.append(f"  {word:<10} {to_display(c['text'])}: {phrase}"
                        + (f"  ({'; '.join(extra)})" if extra else ""))
     return "\n".join(out)
 
@@ -570,11 +585,45 @@ def cmd_flag(a):
 def cmd_report(a):
     from . import report
     p = report.build(a.id, video=a.video, include_rejected=a.include_rejected)
-    res = {"report": str(p), "open": p.as_uri(), **report.CLIP_STATUS}
+    res = {**_report_link(a.id, p, serve=not a.no_serve, open_browser=not a.no_open), **report.CLIP_STATUS}
+    stats_p = p.parent / "stats.json"
+    if stats_p.exists():
+        # Facts about the pass for the user (also at the foot of the report): pass them on
+        # as they are. They change no record.
+        res["about_this_proofread"] = json.loads(stats_p.read_text(encoding="utf-8"))["summary"]
     if report.CLIP_STATUS.get("failed"):
         res["warning"] = ("some audio clips could not be cut, so their cards have no player; "
                           "tell the user and quote first_error")
     _out(res)
+
+
+def _report_link(episode_id: str, page: Path, serve: bool = True, open_browser: bool = True) -> dict:
+    """Where the user opens the report: the report server's address (decisions then save
+    straight into the workspace), or the file itself when the server cannot run."""
+    out = {"report_file": str(page)}
+    url = None
+    if serve:
+        from . import report_server
+        try:
+            url = report_server.ensure()["url"] + f"/r/{episode_id}/"
+        except RuntimeError as e:
+            out["server"] = f"the report server did not start ({e}): the file works too, with Download"
+    out["open"] = url or page.as_uri()
+    out["saves_decisions"] = ("as the user reviews, into work/{0}/decisions.json: then "
+                              "`ccp apply {0} --reviewed`".format(episode_id) if url else
+                              "the user downloads decisions.json and gives it to you: then "
+                              f"`ccp apply {episode_id} --decisions <path>`")
+    if open_browser:
+        import webbrowser
+        try:
+            out["opened_in_browser"] = bool(webbrowser.open(out["open"]))
+        except Exception:
+            out["opened_in_browser"] = False
+    out["tell_the_user"] = (f"The report is open in your browser{' (if not: ' + out['open'] + ')' if url else ''}. "
+                            if out.get("opened_in_browser") else f"Open the report: {out['open']}. ") + (
+        "Your choices are saved as you go; press Done reviewing when you are finished and tell me."
+        if url else "When you are done, press Export decisions and give me the downloaded decisions.json.")
+    return out
 
 
 def _prune_hint(res: dict, episode_id: str) -> dict:
@@ -592,7 +641,15 @@ def cmd_apply(a):
     # --min-severity/--min-confidence are the old spelling of --include-suggest.
     include_suggest = a.include_suggest or a.min_severity in ("suggested", "query") \
         or a.min_confidence in ("medium", "low")
-    res = apply.apply(a.id, Path(a.decisions) if a.decisions else None, include_suggest,
+    decisions = a.decisions
+    if a.reviewed:
+        from . import episode
+        saved = episode.path(a.id, "decisions.json")
+        if not saved.exists():
+            raise SystemExit("no saved decisions yet: the reviewer has not saved any from the report "
+                             f"(ask them to press Done reviewing; or `ccp report {a.id}` to reopen it)")
+        decisions = str(saved)
+    res = apply.apply(a.id, Path(decisions) if decisions else None, include_suggest,
                       a.include or [], a.dry_run, a.structure)
     _out(res if a.dry_run or not res.get("applied") else _prune_hint(res, a.id))
 
@@ -641,6 +698,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--remove-media-dir", action="append", metavar="PATH")
     s.add_argument("--decline", action="append", metavar="KEY", help="the user does not have this; do not ask again")
     s.add_argument("--done", action="store_true", help="first-use setup is finished")
+    s.add_argument("--text", action="store_true", help="a short readable summary instead of JSON")
     s.set_defaults(fn=cmd_setup)
 
     s = sub.add_parser("fetch", help="download a video's audio (+ its subtitles as references) from a link")
@@ -798,12 +856,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--no-apply", action="store_true", help="record the flags but do not edit the draft")
     s.set_defaults(fn=cmd_clean)
 
-    s = sub.add_parser("report", help="HTML review page with clips")
+    s = sub.add_parser("report", help="HTML review page with clips, opened in the browser from a local server")
     s.add_argument("id"); s.add_argument("--video", action="store_true")
+    s.add_argument("--no-open", action="store_true", help="do not open a browser (a rebuild the user already has open)")
+    s.add_argument("--no-serve", action="store_true", help="the plain file only (decisions are then downloaded)")
     s.add_argument("--include-rejected", action="store_true"); s.set_defaults(fn=cmd_report)
 
     s = sub.add_parser("apply", help="write accepted corrections into the subtitle (never commits)")
     s.add_argument("id"); s.add_argument("--decisions", help="decisions.json exported from the report")
+    s.add_argument("--reviewed", action="store_true",
+                   help="the decisions the reviewer saved from the served report (work/<id>/decisions.json)")
     s.add_argument("--include-suggest", action="store_true",
                    help="also apply flags graded suggest (default: only fix)")
     s.add_argument("--min-severity", help=argparse.SUPPRESS)
@@ -846,10 +908,49 @@ def main(argv=None) -> None:
         # server kept loaded for score and listen.
         from . import gpu_bridge
         gpu_bridge.stop_server("the pass is over" if args.cmd != "pipeline" else "pipeline needs the GPU")
+    workspace = _workspace_of(args)
+    if workspace and args.cmd in SNAPSHOT_FIRST:
+        # What the tools point out on each cue, as the agent first sees it (see signals.py).
+        from . import signals
+        signals.snapshot(workspace)
+    import time
+    t0, ok = time.time(), False
     try:
         args.fn(args)
+        ok = True
     except (ValueError, FileNotFoundError) as e:
         raise SystemExit(f"error: {e}")
+    finally:
+        if workspace:
+            _log_activity(workspace, args, time.time() - t0, ok)
+
+
+# Commands that show the agent cues, or change them: the signals are recorded before each.
+SNAPSHOT_FIRST = {"render", "cue", "clean", "flag", "report"}
+
+
+def _workspace_of(args) -> str | None:
+    """The workspace a command works on, if it exists (a command never creates one here)."""
+    from . import paths
+    eid = getattr(args, "id", None)
+    if not eid or args.cmd in ("locate", "fetch"):
+        return None
+    return eid if (paths.get("work") / eid / "episode.json").exists() else None
+
+
+def _log_activity(episode_id: str, args, seconds: float, ok: bool) -> None:
+    """One line per ccp command in work/<id>/activity.jsonl: which command, how long, whether
+    it worked. The pass statistics count the agent's lookups and re-listens from it."""
+    from . import episode
+    import time
+    row = {"at": time.strftime("%Y-%m-%dT%H:%M:%S"), "cmd": args.cmd, "seconds": round(seconds, 1), "ok": ok}
+    if getattr(args, "action", None) and args.cmd in ("flag", "pipeline"):
+        row["action"] = args.action
+    try:
+        with episode.path(episode_id, "activity.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
 
 
 if __name__ == "__main__":

@@ -48,7 +48,8 @@ These principles are stated in full only here. The skills apply them.
    譬如 not 如. Never flatten 喇 laa3 / 啦 laa1 / 囉 lo4 / 囖 lo1: they mean different things.
 
 Every record carries a **reason**: one or two plain sentences on what is wrong (or why the
-line stands) and why the proposal is right, naming the sounds and the meaning.
+line stands) and why the proposal is right, naming the sounds and the meaning. The reviewer
+reads it: plain words, no tool numbers or jargon (investigate-line, "Recording").
 
 ## Hard rules
 
@@ -76,6 +77,12 @@ The sibling repositories are optional: CantoCaptions (the library), cantocaption
 (subtitle-to-media links, quality tiers) and cantocaptions-ai (the speech models).
 
 At the start of a session, after the encoding line below, run `uv run ccp setup` once.
+- It fails (no `uv`, say), or its `next` says to run the setup script: tell the user in one
+  line that you are setting up this folder, run
+  `powershell -ExecutionPolicy Bypass -File scripts\setup.ps1` (it installs uv, ffmpeg, the
+  Python packages and the dictionary caches: a few minutes the first time), then
+  `uv run ccp setup` again. If the script says it linked the skills for Claude Code, ask the
+  user to start a new session so the skills load.
 - `first_run: true` with an `ask` list: ask the user, in one message, where each listed item
   is, or whether they have it, saying in a few words what each enables (`enables` in the
   output). Record the answers with `ccp setup --set KEY=PATH`, `--add-media-dir PATH` and

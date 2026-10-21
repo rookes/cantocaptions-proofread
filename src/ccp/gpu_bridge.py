@@ -97,20 +97,11 @@ def _launch() -> None:
     state = _state_path()
     state.unlink(missing_ok=True)
     args = [str(py), str(GPU_DIR / "server.py"), str(state), str(IDLE_S)]
-    if os.name == "nt":
-        q = lambda s: s.replace("'", "''")        # a PowerShell single-quoted string
-        ps = ("$si = New-CimInstance -ClassName Win32_ProcessStartup -ClientOnly "
-              "-Property @{ShowWindow=[uint16]0}; "
-              "$r = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments "
-              f"@{{CommandLine='{q(subprocess.list2cmdline(args))}'; CurrentDirectory='{q(str(ccai))}'; "
-              "ProcessStartupInformation=$si}; exit $r.ReturnValue")
-        r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps],
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            raise ServerUnavailable(f"could not start the GPU server: {r.stderr.strip() or r.returncode}")
-    else:
-        subprocess.Popen(args, cwd=ccai, start_new_session=True, stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    from .detach import launch
+    try:
+        launch(args, ccai)
+    except RuntimeError as e:
+        raise ServerUnavailable(f"could not start the GPU server: {e}")
 
 
 def _ensure() -> dict:

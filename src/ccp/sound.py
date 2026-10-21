@@ -147,6 +147,18 @@ def _expansions(q: list[tuple[str, ...]], limit: int = 16) -> list[list[str]]:
     return seqs
 
 
+def plain_distance(cost: float) -> str:
+    """A match's per-syllable distance as words, for records a reviewer reads (results come
+    ranked, closest first, so the number itself is never needed)."""
+    if cost <= 0.0:
+        return "the same sounds"
+    if cost < 0.15:
+        return "almost the same"
+    if cost < 0.35:
+        return "close"
+    return "loosely similar"
+
+
 @dataclass
 class Match:
     term: str

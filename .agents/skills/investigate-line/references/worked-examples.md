@@ -32,7 +32,7 @@ it.
 ```
 uv run ccp flag add smoke --cue 1 --category mishearing --grade fix \
   --proposed "阿媽實囉囉攣瞓唔着㗎" --alt "阿媽實囉攣瞓唔着㗎" \
-  --reason "食多都亂 makes no sense; R 一定坐立不安 is 實 'certainly' + 囉囉攣 'restless' (sat6 lo1 lo1 lyun1), keeping the draft's tones" \
+  --reason "食多都亂 makes no sense; the reference 一定坐立不安 is 實 'certainly' + 囉囉攣 'restless' (sat6 lo1 lo1 lyun1), keeping the draft's tones" \
   --evidence "reference: 一定坐立不安 = 實囉囉攣" \
   --evidence "asr_qwen: 食攞攞攣 (lo2 lo2 lyun1), the right syllables" \
   --evidence "dict: 囉囉攣 坐立不安; 實 = 一定"
@@ -63,7 +63,7 @@ the same mishearing, and no audio result can overrule the meaning, so none is ru
 
 ```
 uv run ccp flag keep <id> --cue 251 \
-  --reason "唔抵可憐 m4 dai2 'not worth pitying' is exactly R 不值得可憐; both recognisers' 唔使 m4 sai2 'no need to' does not fit R or the next cue (抵死), so they misheard"
+  --reason "唔抵可憐 m4 dai2 'not worth pitying' is exactly the reference 不值得可憐; both recognisers' 唔使 m4 sai2 'no need to' does not fit the reference or the next cue (抵死), so they misheard"
 ```
 
 ## 3. A particle query raised by meaning: 嘅呢？ → 㗎啦
@@ -89,7 +89,7 @@ by ear and standard, so this is a query: the reviewer chooses.
 ```
 uv run ccp flag add <id> --cue 131 --category particle --grade query \
   --alt "人死咗就唔識講嘢㗎啦" --alt "人死咗就唔識講嘢㗎喇" \
-  --reason "嘅呢？ makes this a question, but R 人死了就不會說話 states it as a taunt; a statement particle fits, and both recognisers hear 㗎啦" \
+  --reason "嘅呢？ makes this a question, but the reference 人死了就不會說話 states it as a taunt; a statement particle fits, and both recognisers hear 㗎啦" \
   --evidence "reference: 人死了就不會說話 (a statement)"
 ```
 
