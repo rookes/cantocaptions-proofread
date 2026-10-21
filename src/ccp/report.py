@@ -578,6 +578,11 @@ async function push() {
   }
 }
 if (SERVED) {
+  // Tell the server this page is open; it stops itself a few minutes after the last open page
+  // goes quiet (report_server.should_stop).
+  const beat = () => fetch('/api/heartbeat').catch(() => {});
+  beat(); setInterval(beat, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) beat(); });
   exportBtn.textContent = 'Done reviewing';
   exportBtn.insertAdjacentHTML('afterend', '<button id="download" title="Save a copy of decisions.json">Download</button>');
   document.getElementById('download').addEventListener('click', download);

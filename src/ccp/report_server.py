@@ -6,14 +6,17 @@ the workspace instead of being downloaded and moved by hand.
     GET/POST  /r/<id>/decisions         the reviewer's decisions: work/<id>/decisions.json
 
 Standard library only, bound to 127.0.0.1. One server serves every workspace. `ccp report`
-starts it when it is not running (detached: see detach.py) and reuses it when it is; it stops
-itself after IDLE_S without a request. The report page still works as a plain file
-(file://), downloading decisions.json, when the server is not running.
+starts it when it is not running (detached: see detach.py) and reuses it when it is. It stops
+itself when nobody is looking (`should_stop`): an open report page says so every
+HEARTBEAT_S, and CLOSED_S after the last one goes quiet (the tab or the IDE closed) the server
+exits; a report never opened keeps it for UNOPENED_S, in case the user opens the link later.
+`ccp report --stop` stops it at once. The report page still works as a plain file (file://),
+downloading decisions.json, when the server is not running.
 
 A save must be a same-origin JSON POST: a page on another site cannot send one (a JSON body
 needs a CORS preflight this server never grants), and the Origin header is checked as well.
 
-    python -m ccp.report_server STATE_FILE [IDLE_S]
+    python -m ccp.report_server STATE_FILE
 """
 from __future__ import annotations
 
@@ -29,7 +32,10 @@ from pathlib import Path
 from urllib.parse import unquote
 
 PORTS = range(8765, 8785)          # the first free one: a stable address across restarts
-IDLE_S = 6 * 3600
+HEARTBEAT_S = 30            # an open report page checks in this often (report.py)
+CLOSED_S = 10 * 60          # stop this long after the last open page went quiet
+UNOPENED_S = 2 * 3600       # ...or this long after starting, if no page was ever opened
+IDLE_S = 12 * 3600          # and never run longer than this without a request at all
 APP = "ccp-report"
 ID_RX = re.compile(r"^[\w.\-]+$")
 SERVABLE = re.compile(r"^(report\.html|clips/[\w.\-]+\.(m4a|mp4))$")
@@ -42,7 +48,9 @@ def _work() -> Path:
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "ccp-report"
+    started = time.time()
     last_request = time.time()
+    last_heartbeat: float | None = None
 
     def log_message(self, fmt, *args):          # quiet: no console to write to
         pass
@@ -99,7 +107,12 @@ class Handler(BaseHTTPRequestHandler):
         Handler.last_request = time.time()
         path = unquote(self.path.split("?", 1)[0])
         if path == "/api/ping":
-            return self._json(200, {"ok": True, "app": APP, "pid": os.getpid()})
+            hb = Handler.last_heartbeat
+            return self._json(200, {"ok": True, "app": APP, "pid": os.getpid(),
+                                    "page_seen_s_ago": None if hb is None else round(time.time() - hb)})
+        if path == "/api/heartbeat":                 # an open report page: keep running
+            Handler.last_heartbeat = time.time()
+            return self._json(200, {"ok": True})
         if path == "/":
             return self._index()
         m = re.match(r"^/r/([^/]+)(/.*)?$", path)
@@ -124,6 +137,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         Handler.last_request = time.time()
         path = unquote(self.path.split("?", 1)[0])
+        if path == "/api/stop":
+            if not self._same_origin() or not self.headers.get("Content-Type", "").startswith("application/json"):
+                return self._json(403, {"error": "refused"})
+            self._json(200, {"ok": True, "stopping": True})
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+            return
         m = re.match(r"^/r/([^/]+)/decisions$", path)
         d = self._workspace(m.group(1)) if m else None
         if d is None:
@@ -159,7 +178,16 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, body.encode("utf-8"), "text/html; charset=utf-8")
 
 
-def serve(state_file: Path, idle_s: float = IDLE_S) -> None:
+def should_stop(now: float, started: float, last_request: float, last_heartbeat: float | None) -> str | None:
+    """Why the server should stop now, or None to keep running."""
+    if now - last_request > IDLE_S:
+        return "no request at all for a long time"
+    if last_heartbeat is None:
+        return "the report was never opened" if now - started > UNOPENED_S else None
+    return "every report page has been closed" if now - last_heartbeat > CLOSED_S else None
+
+
+def serve(state_file: Path) -> None:
     httpd = None
     for port in PORTS:
         try:
@@ -174,8 +202,8 @@ def serve(state_file: Path, idle_s: float = IDLE_S) -> None:
 
     def watch():
         while True:
-            time.sleep(60)
-            if time.time() - Handler.last_request > idle_s:
+            time.sleep(HEARTBEAT_S)
+            if should_stop(time.time(), Handler.started, Handler.last_request, Handler.last_heartbeat):
                 httpd.shutdown()
                 return
     threading.Thread(target=watch, daemon=True).start()
@@ -232,10 +260,25 @@ def ensure(timeout_s: float = 20) -> dict:
     raise RuntimeError("the report server did not start")
 
 
+def stop() -> bool:
+    """Stop the running server; False when none was running."""
+    import urllib.request
+    s = running()
+    if not s:
+        return False
+    req = urllib.request.Request(s["url"] + "/api/stop", data=b"{}", method="POST",
+                                 headers={"Content-Type": "application/json"})
+    try:
+        urllib.request.urlopen(req, timeout=5).read()
+    except OSError:
+        pass
+    return True
+
+
 def report_url(episode_id: str) -> str | None:
     s = running()
     return f"{s['url']}/r/{episode_id}/" if s else None
 
 
 if __name__ == "__main__":
-    serve(Path(sys.argv[1]), float(sys.argv[2]) if len(sys.argv) > 2 else IDLE_S)
+    serve(Path(sys.argv[1]))

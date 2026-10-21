@@ -142,7 +142,16 @@ def cmd_evidence(a):
 def cmd_render(a):
     from . import episode
     from .render import render
-    text = render(a.id, a.start, a.end, a.groups, not a.no_times)
+    only = None
+    if a.only:
+        from .signals import KINDS
+        only = {k.strip() for k in a.only.split(",") if k.strip()}
+        bad = only - set(KINDS)
+        if bad:
+            raise SystemExit(f"--only takes {', '.join(KINDS)} (comma-separated), not {', '.join(sorted(bad))}")
+        if a.save:
+            raise SystemExit("--only prints a list of cues; use it without --save")
+    text = render(a.id, a.start, a.end, a.groups, not a.no_times, only)
     if not a.save:
         return _out(text)
     # The whole stream as a file the agent reads with its own file tools and can search. It is a
@@ -584,6 +593,11 @@ def cmd_flag(a):
 
 def cmd_report(a):
     from . import report
+    if a.stop:
+        from . import report_server
+        return _out({"report_server": "stopped" if report_server.stop() else "was not running"})
+    if not a.id:
+        raise SystemExit("give the workspace id: ccp report <id>")
     p = report.build(a.id, video=a.video, include_rejected=a.include_rejected)
     res = {**_report_link(a.id, p, serve=not a.no_serve, open_browser=not a.no_open), **report.CLIP_STATUS}
     stats_p = p.parent / "stats.json"
@@ -734,6 +748,8 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--to", dest="end", type=int); s.add_argument("--groups", action="store_true")
     s.add_argument("--save", action="store_true",
                    help="write the stream (all cues unless --from/--to) to work/<id>/review.txt instead of printing it")
+    s.add_argument("--only", metavar="KINDS",
+                   help="just the cues with these tool hints: lint, asr, weak, timing (e.g. --only lint)")
     s.add_argument("--no-times", action="store_true"); s.set_defaults(fn=cmd_render)
 
     s = sub.add_parser("cue", help="everything known about one or more cues")
@@ -857,7 +873,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.set_defaults(fn=cmd_clean)
 
     s = sub.add_parser("report", help="HTML review page with clips, opened in the browser from a local server")
-    s.add_argument("id"); s.add_argument("--video", action="store_true")
+    s.add_argument("id", nargs="?"); s.add_argument("--video", action="store_true")
+    s.add_argument("--stop", action="store_true",
+                   help="stop the report server now (it also stops by itself once no report page is open)")
     s.add_argument("--no-open", action="store_true", help="do not open a browser (a rebuild the user already has open)")
     s.add_argument("--no-serve", action="store_true", help="the plain file only (decisions are then downloaded)")
     s.add_argument("--include-rejected", action="store_true"); s.set_defaults(fn=cmd_report)

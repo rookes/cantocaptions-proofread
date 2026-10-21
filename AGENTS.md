@@ -118,8 +118,10 @@ At the start of a session, after the encoding line below, run `uv run ccp setup`
 - **Many items in one call:** `flag add`, `score` and `listen` also read a JSON list from a
   file you write in the workspace (`--json-file work/<id>/<name>.json`); the skill that uses
   each gives its format. One item works on the command line too.
-- Read skill files, their references and glossaries with your file-reading tool, never a
-  shell command (`Select-String`, `cat`, `grep`): the shell needs the user's approval for each.
+- Read and search skill files, their references, glossaries and workspace files (such as
+  `work/<id>/review.txt`) with your own file-reading and search tools, never a shell command
+  (`Select-String`, `cat`, `grep`): the shell needs the user's approval for each. To list the
+  cues a tool flagged, use `ccp render <id> --only lint` (or `asr`, `weak`, `timing`).
 - Each episode has a workspace `work/<episode_id>/` (scratch space you may write to);
   `ccp status <id>` shows what it holds. Pass Chinese text as normal arguments; `⏎` is a line
   break inside a cue.

@@ -121,7 +121,9 @@ def _asr_line(tag: str, hyp: dict) -> str:
 
 
 def render(episode_id: str, start: int = 1, end: int | None = None, show_groups: bool = False,
-           times: bool = True) -> str:
+           times: bool = True, only: set[str] | None = None) -> str:
+    """The review stream for cues *start*..*end*. *only* keeps just the cues with one of those
+    tool hints (signals.KINDS: lint, asr, weak, timing), e.g. every lint line in the file."""
     ep = episode.load(episode_id)
     cues = episode.srt(ep).cues
     end = min(end or len(cues), len(cues))
@@ -142,6 +144,7 @@ def render(episode_id: str, start: int = 1, end: int | None = None, show_groups:
         flags_by.setdefault(f["cue"], []).append(f)
 
     out = [f"# {ep['episode_id']}  cues {start}-{end} of {len(cues)}"
+           + (f"  (only cues with: {', '.join(sorted(only))})" if only else "")
            + ("" if evidence else
               ("  (text only: machine-made draft, clean it before any audio evidence)"
                if not ep.get("cleanup") else "  (text only: no ASR evidence)")
@@ -152,6 +155,14 @@ def render(episode_id: str, start: int = 1, end: int | None = None, show_groups:
         out.append("# R = what is meant (a fix must agree with it); ≠ft/≠qw = how it sounded "
                    "(they can share a mishearing)")
     last_group = None
+    if only:
+        def kinds(c):
+            ev = evidence.get(c.pos, {})
+            differ = asr_differences(c.text, ev)
+            return {k for k, on in (("lint", c.pos in lint_by), ("asr", bool(differ)),
+                                    ("weak", bool(hard_to_hear(ev, bool(differ)))),
+                                    ("timing", c.pos in timing_by)) if on}
+        window = [c for c in window if kinds(c) & only]
     for k, c in enumerate(window):
         ev = evidence.get(c.pos, {})
         g = ev.get("group")
@@ -187,7 +198,9 @@ def render(episode_id: str, start: int = 1, end: int | None = None, show_groups:
         for f in flags_by.get(c.pos, []):
             prop = f" → {to_display(f['proposed'])}" if f.get("proposed") is not None else ""
             out.append(f"F#{f['id']} {f['grade']}/{f['category']}/{f['status']}{prop}")
-        if k + 1 < len(window):
+        if only:
+            out.append("")              # filtered cues are not neighbours: no pause marks
+        elif k + 1 < len(window):
             gap = window[k + 1].start - c.end
             if gap >= SCENE_S:
                 out.append("==")

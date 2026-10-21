@@ -24,7 +24,8 @@ finds cue 37), followed by whatever evidence exists for it:
 No `≠` line means the recognisers say the same words as the draft. Differences in sentence-final
 particles, punctuation and a recogniser's spelling variants (說 for 説, 喐 for 郁) are hidden
 (the draft's own spelling is checked by the `L` lines), and for stock Qwen
-also 噉/咁, 邊/便 and 着/著, which it does not distinguish. `--groups` adds the raw ASR text of
+also 噉/咁, 邊/便 and 着/著, which it does not distinguish. `--only lint` (or `asr`, `weak`, `timing`, comma-separated) prints only the cues with that
+kind of line: every `L`, `≠`, `!` or `T` cue in the file at once. `--groups` adds the raw ASR text of
 each group of cues (`G12 ft …`), for when a per-cue ASR line looks cut oddly at a boundary.
 
 ## `ccp cue`

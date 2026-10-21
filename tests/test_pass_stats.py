@@ -102,3 +102,12 @@ def test_report_carries_found_by_and_the_statistics(workspace):
 ])
 def test_plain_wording(raw, plain):
     assert report.plain(raw) == plain
+
+
+def test_render_only_lists_the_cues_with_those_hints(workspace, capsys):
+    from ccp.render import render
+    text = render(workspace["id"], only={"lint"})
+    assert "only cues with: lint" in text
+    assert "\n1|你俾我啦" in text and "\n2|" not in text and "L variant" in text
+    with pytest.raises(SystemExit, match="--only takes"):
+        cli.main(["render", workspace["id"], "--only", "lints"])

@@ -20,6 +20,7 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
 - `uv run ccp reference <id>` · `--stream N` · `--file <path>` · `--ocr` (ask first): the reference subtitle
 - `uv run ccp evidence <id> [--diarize]`: the recognisers and the aligner over every cue (GPU, minutes)
 - `uv run ccp render <id> --save` · `--from N --to M`: the review stream, saved to a file to read and search · a fresh window printed
+- `uv run ccp render <id> --only lint` (or `asr`, `weak`, `timing`, comma-separated): just the cues with that kind of line, e.g. every lint hit in the file
 - `uv run ccp cue <id> 9 11 24`: suspects in depth
 - `uv run ccp flag add/keep <id> ...`: record decisions (`investigate-line` → Recording)
 - `uv run ccp report <id>` · `uv run ccp apply <id> ...`: output (`references/report-and-apply.md`)
@@ -49,7 +50,9 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
    misspellings it lists under `Avoid`. You add to it in step 8.
 6. **Review pass.** Save the review stream (`ccp render <id> --save`) and read it with your
    file-reading tool, from the first cue to the last, a few hundred lines at a time. Search it
-   whenever another cue matters (how a name is written elsewhere, an earlier mention). Note
+   with your own search tool, not the shell, whenever another cue matters (how a name is
+   written elsewhere, an earlier mention). For a list of every cue with a lint line (or another
+   kind of tool line), use `ccp render <id> --only lint`. Note
    only the suspects, with a word on why: a cue that fits `R` and has no `≠`, `!`, `L` or `T`
    line needs no comment. Do not investigate yet: later cues often explain earlier ones.
 7. **Decide.** `ccp cue` for the suspects (up to 20 per call), then for each, in this order:

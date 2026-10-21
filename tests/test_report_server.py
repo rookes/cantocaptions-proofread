@@ -86,3 +86,23 @@ def test_report_link_without_the_server(workspace):
     link = cli._report_link(workspace["id"], page, serve=False, open_browser=False)
     assert link["open"].startswith("file:") and "Export decisions" in link["tell_the_user"]
     assert "--decisions <path>" in link["saves_decisions"]
+
+
+def test_stops_when_nobody_is_looking():
+    rs, t0 = report_server, 1_000_000.0
+    # Never opened: kept for UNOPENED_S, in case the user opens the link later.
+    assert rs.should_stop(t0 + 60, t0, t0, None) is None
+    assert rs.should_stop(t0 + rs.UNOPENED_S + 1, t0, t0, None) == "the report was never opened"
+    # Opened: kept while a page checks in, stopped CLOSED_S after the last one.
+    beat = t0 + 3600
+    assert rs.should_stop(beat + 60, t0, beat, beat) is None
+    assert rs.should_stop(beat + rs.CLOSED_S + 1, t0, beat, beat) == "every report page has been closed"
+
+
+def test_heartbeat_and_stop_endpoints(server):
+    report_server.Handler.last_heartbeat = None
+    assert _get(server + "/api/heartbeat")[0] == 200
+    assert report_server.Handler.last_heartbeat is not None
+    assert _post(server + "/api/stop", {}, origin="http://evil.example")[0] == 403
+    status, reply = _post(server + "/api/stop", {})
+    assert status == 200 and reply["stopping"]

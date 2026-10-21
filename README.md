@@ -36,7 +36,7 @@ own machine (`http://127.0.0.1:8765/r/<episode>/`), and your accept/reject choic
 straight into the workspace as you go. Press **Done reviewing** and tell the agent. To view it
 inside the IDE instead, open the link in the IDE's browser panel (in VS Code-based editors:
 Command Palette → "Simple Browser: Show", then paste the link). `http://127.0.0.1:8765/` lists
-every report. Without the server (it stops after six idle hours; `ccp report <id>` starts it
+every report. Without the server (it stops by itself about ten minutes after the last report tab closes, or with `ccp report --stop`; `ccp report <id>` starts it
 again), `work/<id>/report.html` still opens as a plain file, and **Export decisions** downloads
 a `decisions.json` to give the agent.
 
@@ -119,7 +119,7 @@ profile so every session (including an agent's, if its terminal loads the profil
 | `ccp timing <id> N [--split "a\|b"]` | retime or split proposals from the stored audio alignment |
 | `ccp reference <id>` | find/extract/OCR a reference subtitle and line up its timing |
 | `ccp evidence <id>` | (GPU) both recognisers and aligner peaks for every cue |
-| `ccp render <id> --from N --to M` / `--save` | the review stream, printed or saved to `work/<id>/review.txt` |
+| `ccp render <id> --from N --to M` / `--save` / `--only lint` | the review stream, printed or saved to `work/<id>/review.txt`; `--only` keeps just the cues with lint (or `asr`, `weak`, `timing`) lines |
 | `ccp cue <id> N` | everything about one cue |
 | `ccp sounds-like <span> --hyp …` | words that sound like a suspect span (words.hk + strict corpus) |
 | `ccp dict` | words.hk dictionary (particles are looked up by their reading) |
