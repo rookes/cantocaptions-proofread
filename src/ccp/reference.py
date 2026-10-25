@@ -162,6 +162,39 @@ def options(ep: dict) -> list[dict]:
     return opts
 
 
+def _question(episode_id: str, chinese_bitmap: list[dict], untagged: list[int], english: list[dict]) -> dict:
+    """What to ask the user when no Chinese text reference exists, in plain words, and the
+    command for each answer. Only the user knows what an unlabelled track holds; and without a
+    reference, what each line means is judged from the conversation alone."""
+    parts, answers = [], {}
+    if chinese_bitmap:
+        s = chinese_bitmap[0]["stream_index"]
+        parts.append(f"I can read the video's Chinese image subtitles (stream {s}) with OCR, which takes "
+                     "the GPU about a minute.")
+        answers[f"read stream {s}"] = f"uv run ccp reference {episode_id} --stream {s} --ocr"
+    if untagged:
+        which = (f"stream {untagged[0]}" if len(untagged) == 1
+                 else "streams " + ", ".join(map(str, untagged)))
+        parts.append(f"The video has image subtitles that are not labelled with a language ({which}). I can "
+                     "read one with OCR (about a minute on the GPU) if you tell me which track and what "
+                     "language its subtitles are in: Traditional Chinese, Simplified Chinese, English, "
+                     "Japanese or Korean.")
+        answers["read stream N, in language L"] = (f"uv run ccp reference {episode_id} --stream N --ocr --ocr-lang "
+                                                   "chinese_cht|ch|en|japan|korean")
+    for o in english[:2]:
+        src = f"stream {o['stream_index']}" if "stream_index" in o else o.get("path", "")
+        parts.append(f"There is a non-Chinese text subtitle ({src}) I could use instead.")
+        answers[f"use {src}"] = (f"uv run ccp reference {episode_id} --stream {o['stream_index']}"
+                                 if "stream_index" in o else f"uv run ccp reference {episode_id} --file \"{o['path']}\"")
+    parts.append("Or I can proofread without a reference, but then what each line means is judged from "
+                 "the conversation alone.")
+    answers["no reference"] = "carry on without one, and say in the summary that there was no reference"
+    return {"ask_the_user": " ".join(parts), "answers": answers,
+            "how_to_ask": ("Ask the user this question, in these words or a translation, and wait. Do not "
+                           "recommend an option or call going without a reference the default: only the user "
+                           "knows what an unlabelled track holds, and the reference decides what lines mean.")}
+
+
 def prepare(episode_id: str, file: str | None = None, stream: int | None = None,
             ocr: bool = False, ocr_lang: str | None = None, extra: dict | None = None) -> dict:
     ep = episode.load(episode_id)
@@ -193,7 +226,8 @@ def prepare(episode_id: str, file: str | None = None, stream: int | None = None,
                                    "can be OCR'd once the user says which language they are in (--stream N "
                                    "--ocr --ocr-lang LANG). " if untagged else "")
                                 + ("An English text reference can be used with --file/--stream. " if ranked else "")
-                                + "Ask the user which to use.")}
+                                + "Ask the user which to use."),
+                    **_question(episode_id, chinese_bitmap, untagged, [o for o in ranked if not o["chinese"]])}
         chosen = ranked[0]
 
     if chosen["kind"] == "file":

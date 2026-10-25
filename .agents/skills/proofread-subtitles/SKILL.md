@@ -40,9 +40,12 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
 2. **Settle the output** (AGENTS.md, "When the request is unclear") and where it goes
    (`references/report-and-apply.md` → "Where the result goes"): run `ccp copy-draft` now if
    the edits must go into a new file.
-3. **Reference.** `uv run ccp reference <id>`. If it answers `needs_decision`, tell the user
-   what is available and ask which to use. Note `agreement`: below 0.6 some `R` lines sit
-   next to the wrong cue, so check `prev` / `next` before relying on one.
+3. **Reference.** `uv run ccp reference <id>`. If it answers `needs_decision`, ask the user
+   its `ask_the_user` question as it is (with your other opening questions if you have any),
+   recommend no option, and run the command in `answers` that matches the reply. Never present
+   "no reference" as the default when a track can be read: the reference decides what each
+   line means (AGENTS.md principle 1). Note `agreement`: below 0.6 some `R` lines sit next to
+   the wrong cue, so check `prev` / `next` before relying on one.
 4. **Evidence.** `uv run ccp evidence <id>`. Convention checks come with `ccp render` (`L` lines).
    If `ccp status` shows `tools.audio_evidence: false` (no cantocaptions-ai on this machine),
    skip this step and see "Without audio" below.

@@ -53,3 +53,19 @@ def test_cue_output_puts_reference_first_and_asks_for_meaning(workspace, capsys)
     out = capsys.readouterr().out
     assert out.index("R      媽媽") < out.index("qw ≠")
     assert "check  R sets the meaning" in out
+
+
+def test_untagged_image_tracks_make_ccp_ask_which_and_in_what_language(workspace, monkeypatch):
+    from ccp import episode, paths, reference
+    ep = episode.load(workspace["id"])
+    ep.update(media="x.mkv", subtitle_streams=[
+        {"stream_index": 3, "kind": "bitmap", "codec": "hdmv_pgs_subtitle", "language": "", "title": ""}])
+    episode.save(ep)
+    monkeypatch.setattr(paths, "ccai_has_ocr", lambda: True)
+    r = reference.prepare(workspace["id"])
+    assert r["status"] == "needs_decision"
+    assert "stream 3" in r["ask_the_user"] and "Traditional Chinese" in r["ask_the_user"]
+    assert "--ocr-lang" in r["answers"]["read stream N, in language L"] and "no reference" in r["answers"]
+    assert "Do not recommend" in r["how_to_ask"]
+    with pytest.raises(SystemExit, match="no language tag"):
+        reference.prepare(workspace["id"], stream=3, ocr=True)          # asks before running any OCR

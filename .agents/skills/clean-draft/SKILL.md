@@ -33,7 +33,8 @@ reference and a knowledge of Cantonese catches most of them from the text alone.
    including confirming media found by name). For a library file the user wants kept as it
    is, run `ccp copy-draft` now.
 2. **Reference.** `ccp reference <id>`: with a reference this pass fixes far more. Note its
-   `label`.
+   `label`. If it answers `needs_decision`, ask the user its `ask_the_user` question as it is,
+   recommend no option, and run the matching command from `answers`.
 3. **Glossary.** `ccp status <id>` shows `glossary` (`path`, `exists`); read it with your
    file-reading tool if it exists, without checking for it in the shell. At the end you add to it
    (`proofread-subtitles` step 8): take the names from the reference and your fixes, never
