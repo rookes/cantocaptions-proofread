@@ -1,0 +1,130 @@
+# Particle collocations: phrases that pull a clause toward one sentence-final particle.
+# `ccp particles scan` checks every particle against these, and `ccp particles colloc` shows
+# them with the strict-corpus counts. Mined collocations (cache/colloc_strict.pkl) need no
+# entry here; this file holds the ones worth stating: from the standards, from the user, and
+# ones an agent found deciding a line.
+#
+# Fields:
+#   trigger  regex over the clause before the particle; `$` = right before the particle
+#   among    a set name from config/particles.toml (laa, aa…) or the competing particles/runs,
+#            "|"-separated (嚛|㗎啦|㗎喇)
+#   prefer   the particle (or run) the phrase usually takes; omit when it depends on meaning
+#   note     what the choice means, citing the standards section
+#   source   guide | user | agent:<episode id>
+#   status   confirmed | proposed (an agent's entry, until the user confirms it)
+#
+# Agents add entries with `ccp particles note add`, never by editing this file.
+
+[[colloc]]
+trigger = "(已經|而家)"
+among = "laa"
+prefer = "喇"
+note = "已經 and 而家 mark a change of state, which is what 喇 laa3 says (particle-usage: Set phrases that generally use 喇 laa3)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "咗"
+among = "laa"
+prefer = "喇"
+note = "The completed aspect 咗 goes with 喇 laa3's change of state (particle-usage: Set phrases that generally use 喇 laa3)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "一定"
+among = "laa"
+prefer = "喇"
+note = "一定…喇 states a certain fact; 一定…啦 says the listener should already know it ('obviously') (particle-usage: 喇 laa3, Usage 4)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "咪"
+among = "囖|啦"
+prefer = "囖"
+note = "咪…囖 is 'just do…'; 啦 there is a rarer, softer option (particle-usage: 囖 lo1, Usage 2)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "我都話咗"
+among = "嚛|㗎啦|㗎喇|啦|喇"
+note = "'I told you so': 嚛 blames the listener; 㗎啦 is a playful reminder they should have known; 㗎喇 is rare and flat (particle-usage: 我都話咗…)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "可能"
+among = "啦|呢|喇"
+note = "可能…啦 is the common, hopeful guess; 呢 thinks aloud ('it could be…'); 喇 has a negative or serious implication (particle-usage: 可能…)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "(太好|就得|就好)$"
+among = "laa"
+prefer = "喇"
+note = "太好喇, 就得喇 and 就好喇 are set phrases with 喇 laa3 (particle-usage: Set phrases that generally use 喇 laa3)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "(走先|再見)$"
+among = "喇|啊|啦"
+prefer = "喇"
+note = "Goodbyes take 喇 laa3: 我走先啊 is usually a mishearing of 我走先喇; 再見啦 is possible but less common, a cheerful 'see you later, OK?' (particle-usage: Traditional goodbyes)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "返嚟$"
+among = "laa"
+prefer = "喇"
+note = "我返嚟喇 announces 'I'm back'; 我返嚟啦 would propose coming back, and is extremely uncommon (particle-usage: 喇 laa3, Usage 1)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "弊$"
+among = "laa"
+prefer = "喇"
+note = "弊喇 is an outburst, 'we're in trouble' (particle-usage: 喇 laa3, Usage 3)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "死$"
+among = "喇|啦"
+note = "死喇 is an outburst ('we're done for') or, in a real threat, a warning; 死啦 is an insulting or tongue-in-cheek 'just die' (particle-usage: 喇 laa3, Usage 3)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "^好$"
+among = "啦|喇"
+note = "好啦 accepts a proposal or a decision just made ('alright'); 好喇 is 'alright, now', often time to do something. Hard to tell apart: decide from the scene (particle-usage: 啦 laa1, Usage 2)."
+source = "guide"
+status = "confirmed"
+added = "2026-10-25"
+
+[[colloc]]
+trigger = "聽住$"
+among = "laa"
+prefer = "喇"
+note = "聽住… is an imperative command/warning ('listen up'), which generally takes 喇 laa3 (particle-usage: 喇 laa3, Usage 2; words.hk: 嗱，聽住喇！)"
+source = "agent:attack-on-titan-2013_s01e02_tvb"
+status = "proposed"
+added = "2026-10-25"
+examples = ["attack-on-titan-2013_s01e02_tvb#81  聽住喇"]

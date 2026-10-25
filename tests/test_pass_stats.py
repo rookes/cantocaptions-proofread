@@ -24,8 +24,9 @@ def test_signals_mark_what_the_tools_pointed_out(workspace):
     assert now[1]["kinds"] == ["lint"]                  # 俾 -> 畀
     assert now[2]["kinds"] == ["asr", "weak"]
     assert now[3]["kinds"] == []
-    # Cue 4's recogniser differs only in a particle: no hint, and its weak character is not shown.
-    assert now[4]["kinds"] == []
+    # Cue 4's recogniser differs only in a particle: no recogniser hint, and its weak character
+    # is not shown. Its particle is doubted, though: 一定… usually takes 喇 (a recorded collocation).
+    assert now[4]["kinds"] == ["particle"]
 
 
 def test_a_fixed_line_keeps_the_hint_it_had(workspace):
@@ -42,7 +43,7 @@ def test_statistics_split_tool_hints_from_the_agents_own_finds(workspace):
     flags.add(workspace["id"], 3, "punctuation", "suggest", "-走喇！⏎-等埋我啊", [], "an exclamation, not a statement")
     s = stats.compute(workspace["id"])
     th = s["tool_hints"]
-    assert th["lines"] == 2 and th["in_report"] == 1 and th["changed"] == 1 and th["left_alone"] == 1
+    assert th["lines"] == 3 and th["in_report"] == 1 and th["changed"] == 1 and th["left_alone"] == 2
     assert th["by_kind"]["lint"] == {"shown": 1, "in_report": 0, "changed": 0, "kept": 0}
     assert s["found_by_agent_alone"] == {"records": 1, "changes": 1}
     assert any("on lines no tool pointed out" in line for line in s["summary"])

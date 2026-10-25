@@ -12,6 +12,7 @@ Load the skill that fits the request before you start.
 
 - `proofread-subtitles`: proofread, check, review or correct an episode or a subtitle file
 - `clean-draft`: the same, when the subtitles are AI-generated or ASR output (`machine_draft: true` in `ccp status`) or very messy. Clean first; `proofread-subtitles` only for a full pass.
+- `review-particles`: check or fix only the sentence-final particles (喇/啦, 啊/呀, 㗎/嘎 …) of an episode or file
 - `prepare-draft`: realign, retime, resync or transcribe an episode; run cantocaptions-ai / ASR. Then proofread if that was asked for.
 - `subtitles-from-link`: a video link (YouTube or similar) to make subtitles for
 - `investigate-line`: one line: what does it really say, is it right?
@@ -38,11 +39,15 @@ These principles are stated in full only here. The skills apply them.
 3. **Proofreading is not rewriting.** Change a cue only when evidence shows it is wrong. A
    plausible, conventional line that fits the reference stays. In a file the record calls
    `strict`, almost every line is right.
-4. **Particles are judged by meaning, never by the recognisers.** The recognisers insert,
-   drop and swap sentence-final particles freely; their particles are no evidence. A particle
-   question arises only when the draft's particle gives the line a different force from `R`
-   (a question where it states, a statement where it asks), and it is a `query` unless the
-   character is wrong for its reading. 𠸏 ge2 and 嘎 gaa4 are standard particles, not
+4. **Particles are judged by meaning first.** What the line does in its scene (announces a
+   change, proposes, reminds the listener of what they should know, asks…) decides which
+   particle fits; `cantocaptions-standards` (`particle-usage.md`) says which particle does
+   what. The recognisers insert, drop and swap particles in their transcripts freely: the
+   particles they write are no evidence. Two signals are: the fine-tuned recogniser's direct
+   comparison of the alternatives, and the collocations strict subtitles follow (both in
+   `ccp particles`). A particle change is a `fix` only when the usage clearly fits it **and** one
+   of those clearly backs it; otherwise `suggest` or `query`, and a draft particle that is a
+   natural reading of the scene stands. 𠸏 ge2 and 嘎 gaa4 are standard particles, not
    variants of 嘅 and 㗎.
 5. **Write to the conventions.** 嘅 not 的, 冇 not 沒有, 佢 not 他/她 for "he/she", 畀 not 俾,
    譬如 not 如. Never flatten 喇 laa3 / 啦 laa1 / 囉 lo4 / 囖 lo1: they mean different things.
@@ -54,10 +59,10 @@ reads it: plain words, no tool numbers or jargon (investigate-line, "Recording")
 ## Hard rules
 
 1. **Use `ccp` for files, media and cantocaptions-ai.** Never search media drives or the
-   CantoCaptions tree by hand, never run cantocaptions-ai or the dataset tools directly,
-   never download with anything but `ccp fetch`, and never script against `dictionaries/`,
-   `cache/` or workspace files. If `ccp` cannot do something, report what it said and ask the
-   user.
+   CantoCaptions tree by hand, never run cantocaptions-ai, the dataset tools, `ffprobe` or
+   `ffmpeg` directly, never download with anything but `ccp fetch`, and never script against
+   or hand-edit `dictionaries/`, `cache/` or workspace files (`work/`: `reference.json` too).
+   If `ccp` cannot do something, report what it said and ask the user.
 2. **Never commit, push, branch, stash or reset** in any repository.
 3. **Change subtitle files only when the user asked for edits**, and only through `ccp apply`,
    `ccp clean` and `ccp publish`. Timings change only when the user asked for retiming or
@@ -70,6 +75,13 @@ reads it: plain words, no tool numbers or jargon (investigate-line, "Recording")
 7. **A media file found by name is a guess.** When `ccp locate` answers with
    `media_candidates` (`needs_confirmation: true`), show the user the best one and ask whether
    it is the right episode before you use it. Never pick one yourself, even with one candidate.
+8. **Never change this repository** (`src/`, `scripts/`, `tests/`, `config/`, `.agents/`,
+   `AGENTS.md`, `pyproject.toml`) unless the user explicitly asks you to change it in this
+   session. A `ccp` that cannot do what the task needs is something to report, not to fix:
+   say what failed and what `ccp` would need, and wait. "Use `ccp`" is not permission to
+   change `ccp`, and neither is an error, a crash or a missing option. `ccp` checks this: once
+   its own files change during a session it refuses to run and names them (only `ccp setup`,
+   run by the user's decision, clears it).
 
 ## First use and missing tools
 
@@ -115,6 +127,15 @@ At the start of a session, after the encoding line below, run `uv run ccp setup`
   ones a few seconds. `report`, `apply`, `export`, `publish` and `prune` stop it when the pass
   is over. `score` needs no GPU: it reads the audio `evidence` stored and takes about a
   second. Everything else is quick.
+- **Sandboxed terminals.** If your harness runs commands in a sandbox (Antigravity does by
+  default), run these outside it from the first try (in Antigravity, `BypassSandbox`):
+  `ccp report`, `ccp listen` and `ccp particles model` start a server that must outlive the
+  command, and every GPU command (`ccp evidence`, `ccp reference --ocr`, `ccp pipeline`) needs
+  to write outside this folder. In a sandbox they fail, stall or fall back quietly: the report
+  opens without its server, so the reviewer's decisions do not save; `listen` reloads both
+  recognisers on every call; `evidence` can run out of GPU memory or crawl. If an output has a
+  `server` or `gpu_server` note, run the same command again outside the sandbox before going
+  on.
 - **Many items in one call:** `flag add`, `score` and `listen` also read a JSON list from a
   file you write in the workspace (`--json-file work/<id>/<name>.json`); the skill that uses
   each gives its format. One item works on the command line too.
@@ -131,7 +152,8 @@ At the start of a session, after the encoding line below, run `uv run ccp setup`
 Set up:
 - `setup`: which optional tools this machine has; record first-use answers
 - `locate`: find a subtitle and its media; create the workspace
-- `status`: what a workspace holds (draft, reference, evidence, records, `machine_draft`, `tools`)
+- `status`: what a workspace holds (draft, reference, evidence, records, `machine_draft`, `tools`, `glossary`)
+- `glossaries`: every show glossary on this machine
 - `reference`: find, extract or OCR a reference subtitle and line up its timing
 - `evidence`: run the speech recognisers and the aligner over every cue (GPU)
 - `pipeline`: run cantocaptions-ai: realign or transcribe into a new working draft (GPU)
@@ -143,6 +165,7 @@ Look up:
 - `sounds-like`: words that sound like a span (words.hk, and the strict corpus when there is one)
 - `dict`: words.hk entries (a particle is looked up by its reading)
 - `corpus`: usage in hand-standardized subtitles; `--final`: which particles end a phrase
+- `particles`: sentence-final particles: `scan` a draft, `explain` one, `colloc` (which phrases pull which particle), `model` (GPU: the fine-tuned recogniser's comparison), `note` (record a collocation)
 Listen:
 - `listen`: re-run the recognisers on a cue with more context (GPU)
 - `score`: which candidate texts fit a cue's audio better than the draft

@@ -7,8 +7,8 @@ description: Decide what a suspect Cantonese subtitle line really says and recor
 
 This is the one procedure for deciding a suspect cue, in every kind of proofread. It applies
 the principles in AGENTS.md ("How to decide a line"). Before your first decision in a
-session, read `references/worked-examples.md` (a fix, a keep against both recognisers, and
-a particle query). Open `references/tool-guide.md` only when you are about to use audio
+session, read `references/worked-examples.md` (a fix, a keep against both recognisers, a
+particle query and a particle fix). Open `references/tool-guide.md` only when you are about to use audio
 (`listen`, `score`) or a lookup you have not used yet, and `references/sound-alikes.md` when
 you are hunting for what a misheard span really was.
 
@@ -21,6 +21,7 @@ few where the meaning is wrong and the right words are not obvious.
 - `uv run ccp sounds-like <span> --hyp <ASR span> --hyp <ASR span> [--source both]`: candidates that sound like the span
 - `uv run ccp dict <word>` · `uv run ccp dict <text> --contains`: meaning, register, whether a word exists; a particle's usage (looked up by its reading)
 - `uv run ccp corpus "<regex>" [--show <slug>] [-C 2]` · `--final [--among laa]`: usage in standardized subtitles; which particles end a phrase
+- `uv run ccp particles scan <id> --from N --to N` · `particles explain 喇` · `particles colloc "<phrase>" --among laa`: a particle: what the standards, the fine-tuned recogniser and the collocations say
 - `uv run ccp listen <id> --cue N [--pad 1.5] [--isolate]` · `--json-file <file>` (a list of `{"cue": N}`): re-hear cues with more context (GPU)
 - `uv run ccp score <id> --cue N "<full text A>" "<full text B>"` · `--json-file <file>` (a list of `{"cue": N, "candidates": ["<full text>", ...]}`): which candidates the audio favours over the draft (CPU)
 - `uv run ccp flag add <id> ...` · `uv run ccp flag keep <id> ...`: record the decision (below)
@@ -60,11 +61,16 @@ few where the meaning is wrong and the right words are not obvious.
    - **`R` cannot decide.** No reference, an English one, a loose translation, or an `R` line
      that belongs to a neighbouring cue (low `agreement` in `ccp status`): judge the meaning
      from the conversation, and fix only when sound and context both make it clear.
-3. **Particles** (AGENTS.md principle 4). Ask only whether the draft's particle gives the
-   line the force `R` and the scene need. If not, record a **query** whose alternatives are
-   the particles that would (the recognisers' particles may suggest which). A particle written
-   with the wrong character for its reading (`cantocaptions-standards`) is a **fix**.
-   Otherwise there is nothing to record.
+3. **Particles** (AGENTS.md principle 4). Ask what the line does in its scene (announces a
+   change, proposes, reminds, asks…) and whether the draft's particle does that
+   (`cantocaptions-standards`, `particle-usage.md`). A natural reading of the draft's particle
+   stands. If it does not fit, `ccp particles scan <id> --from N --to N` shows the fine-tuned
+   recogniser's comparison and the collocations for that particle (`review-particles`, step 5,
+   has the whole procedure): a **fix** when the usage clearly fits another particle and one of
+   those signals clearly backs it (evidence `guide:` plus `particle_model:`, `colloc:` or
+   `corpus:`), otherwise a **suggest** or a **query** with the particles as alternatives. The
+   recognisers' transcribed particles are never the signal. A particle written with the wrong
+   character for its reading (`cantocaptions-standards`) is a **fix**.
 4. **Record** exactly one entry for the cue (below) **as soon as you have decided it**, then
    move on: the record holds the decision, so do not reopen it later. A suspect you checked
    and found right is recorded too, as a keep.
@@ -108,7 +114,8 @@ uv run ccp flag keep <id> --cue 251 \
   proofread skill), `other`.
 - `--evidence "source: detail"` for each witness that mattered; sources: `reference`,
   `asr_ft`, `asr_qwen`, `listen`, `ctc` (the audio check: `score`), `sounds_like`, `dict`,
-  `corpus`, `lint`, `glossary`, `context`. The detail is plain words too
+  `corpus`, `lint`, `glossary`, `context`; for particles also `guide` (the standards' usage),
+  `particle_model` (the fine-tuned recogniser's comparison) and `colloc` (a collocation). The detail is plain words too
   (`ctc: fits the audio much better than the draft`). A `mishearing`, `missing`, `extra` or `other` correction on a cue
   that has an `R` line must include a `reference:` entry saying how its meaning matches `R`;
   the tool refuses it otherwise. If you cannot write that line honestly, the fix is wrong.

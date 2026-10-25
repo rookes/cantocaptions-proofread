@@ -154,6 +154,14 @@ class Handler(BaseHTTPRequestHandler):
             decisions = [x for x in data.get("decisions", []) if isinstance(x, dict) and "flag" in x]
         except (ValueError, AttributeError):
             return self._json(400, {"error": "not a decisions file"})
+        # Only this review round's records: a page left open from an earlier round must not write
+        # its (already applied) decisions into the new round's file.
+        from . import flags as flagstore
+        try:
+            ids = {f["id"] for f in flagstore.in_round(d.name)}
+            decisions = [x for x in decisions if str(x["flag"]).isdigit() and int(x["flag"]) in ids]
+        except (OSError, ValueError, SystemExit):
+            pass
         out = d / "decisions.json"
         if out.exists():
             out.replace(d / "decisions.previous.json")
@@ -257,7 +265,7 @@ def ensure(timeout_s: float = 20) -> dict:
         if s:
             return s
         time.sleep(0.3)
-    raise RuntimeError("the report server did not start")
+    raise RuntimeError(f"it did not answer within {timeout_s:.0f} s")
 
 
 def stop() -> bool:

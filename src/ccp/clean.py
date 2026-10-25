@@ -30,7 +30,7 @@ import time
 from pathlib import Path
 
 from . import apply as applier, episode, flags as flagstore, lint
-from .corpus import FINAL_PARTICLES
+from .particles import BOUNDARY, final_mask as _final_mask
 from .srtio import invisible_name
 
 PUNCT = set("，。？！…,.?!；;：:、「」『』（）()\"'“”‘’-— \n")
@@ -62,19 +62,6 @@ def parse(lines: list[str]) -> list[dict]:
         out.append({"cue": cue, "text": None if text == "?" else text, "why": why, "category": category})
     return out
 
-
-BOUNDARY = set("，。？！…,.?!；;：:、」』）) \n")
-
-
-def _final_mask(text: str) -> list[bool]:
-    """True for each character in a clause-final particle run (particles directly before a
-    clause boundary or the end of the line): the 𠸏 of 唔痛𠸏, both of 㗎唧 in 判畀佢哋㗎唧？
-    Not the 嘅 of 你哋嘅Sa姨 or the 啊 of 殺啊人."""
-    mask = [False] * len(text)
-    for i in range(len(text) - 1, -1, -1):
-        nxt_ok = i + 1 == len(text) or text[i + 1] in BOUNDARY or mask[i + 1]
-        mask[i] = text[i] in FINAL_PARTICLES and nxt_ok
-    return mask
 
 
 def _split_tail(seg: str) -> tuple[str, str]:

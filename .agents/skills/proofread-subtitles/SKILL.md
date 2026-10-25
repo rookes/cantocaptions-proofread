@@ -46,15 +46,22 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
 4. **Evidence.** `uv run ccp evidence <id>`. Convention checks come with `ccp render` (`L` lines).
    If `ccp status` shows `tools.audio_evidence: false` (no cantocaptions-ai on this machine),
    skip this step and see "Without audio" below.
-5. **Glossary.** Read `glossaries/<show_slug>.md` if there is one: its names, and the
-   misspellings it lists under `Avoid`. You add to it in step 8.
+5. **Glossary.** `ccp status <id>` shows `glossary`: its `path`, whether it `exists` yet, and
+   how many `names` it holds, and `similar`: glossaries of what may be the same show under
+   another name (a year added or dropped). Do not look for files yourself (no `Test-Path`,
+   `Get-ChildItem` or other shell command); `ccp glossaries` lists every glossary there is.
+   If it exists, read it with your file-reading tool: its names, and the misspellings it lists
+   under `Avoid`. If it does not but a `similar` one is clearly this show, read that one and
+   tell the user (the show's slug changed). You add to it in step 8.
 6. **Review pass.** Save the review stream (`ccp render <id> --save`) and read it with your
    file-reading tool, from the first cue to the last, a few hundred lines at a time. Search it
    with your own search tool, not the shell, whenever another cue matters (how a name is
    written elsewhere, an earlier mention). For a list of every cue with a lint line (or another
    kind of tool line), use `ccp render <id> --only lint`. Note
    only the suspects, with a word on why: a cue that fits `R` and has no `≠`, `!`, `L` or `T`
-   line needs no comment. Do not investigate yet: later cues often explain earlier ones.
+   line needs no comment. Then save the particle scan (`ccp particles scan <id> --save
+   --only-suspects`) and read `work/<id>/particles.txt` the same way: each `?` slot is a
+   suspect too. Do not investigate yet: later cues often explain earlier ones.
 7. **Decide.** `ccp cue` for the suspects (up to 20 per call), then for each, in this order:
    - **Settled already:** a convention, name or obvious typo fix; or both recognisers hear
      a fix that means what `R` means. Record it.
@@ -69,7 +76,7 @@ If the subtitles are AI-generated or ASR output and not cleaned yet, use `clean-
    fine) and do not revisit it: the record holds it.
 8. **Update the glossary.** Every pass ends with this step, whether or not a name needed
    fixing: the glossary is what lets the next episode, or one without a reference, get the
-   names right. Create `glossaries/<show_slug>.md` if there is none (format in
+   names right. If `glossary.exists` was false, create the file at `glossary.path` (format in
    `references/reading.md`), then add each recurring name this episode uses that it does not
    have yet: characters (full names, and the nicknames people use), places, groups, ranks and
    titles, recurring things with invented names. Write each as the subtitles write it after
@@ -93,6 +100,8 @@ Each is a reason to *look*, not proof:
   differences are hidden on purpose); both recognisers differing together is stronger;
 - a run of weak characters (`!`);
 - a lint line (`L`);
+- a `?` slot in the particle scan (`ccp particles scan`): the standards' usage, the fine-tuned
+  recogniser's comparison or a collocation doubts the particle;
 - a name written differently from the glossary, `R` or elsewhere in the file;
 - Standard Written Chinese rather than spoken Cantonese.
 

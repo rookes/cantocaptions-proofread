@@ -5,8 +5,9 @@
 - What must this line mean? Use `R` and the neighbouring cues in `ccp cue`. Do not copy `R`'s wording.
 - What else could these sounds be? Use `ccp sounds-like SPAN --hyp ASR1 --hyp ASR2` (readings in `ccp cue`), your own knowledge. Do not trust a candidate only because it ranks first.
 - Is this a real word; what register? Use `ccp dict WORD`, then `ccp corpus WORD`. Do not assume a word exists because it looks plausible.
-- What does this particle mean; which tone is it? Use `ccp dict 喇`, `cantocaptions-standards`. Do not look particles up by character in words.hk.
-- Which particle usually ends a clause with this phrase? Use `ccp corpus PHRASE --final --among laa`, `ccp corpus A --vs B`. Do not treat a tendency as proof for one line.
+- What does this particle mean; which tone is it? Use `ccp particles explain 喇` (the standards' usage notes, words.hk senses and examples), `cantocaptions-standards`. Do not look particles up by character in words.hk.
+- Which particle usually ends a clause with this phrase? Use `ccp particles colloc PHRASE --among laa` (strict subtitles, words.hk examples, recorded collocations), `ccp particles colloc --top 啦 --vs 喇`. Do not treat a tendency as proof for one line.
+- Does the audio favour one particle over another? Use the `model:` line of `ccp particles scan` (or `ccp particles model ID --cue N`). Do not read a lean as proof, nor use it on a draft the fine-tuned recogniser wrote.
 - How does the standard write this word? Use `cantocaptions-standards`, then `ccp dict`, then `ccp corpus`. Do not follow files outside the strict tier.
 - How is this name written in this show? Use AGENTS.md principle 2. Do not invent a new transliteration.
 - What do the recognisers hear with more context? Use `ccp listen ID --cue N` (`--pad 1.5`, `--isolate` for music). Do not read a padded transcript as belonging only to this cue.
@@ -57,6 +58,14 @@ CantoCaptions style and keeps its sound distinctions (噉 gam2 / 咁 gam3, 邊 /
 habits, so where it agrees with the draft both may be wrong the same way. It sometimes drops
 short words. It is not run on drafts it wrote itself (AI-generated and ASR drafts).
 
+**The fine-tuned recogniser's particle comparison (`ccp particles`, `particle_model`).** Not
+its transcript: for each clause-final particle it is asked how likely the draft's particle is,
+against each alternative, given the audio and the rest of the line. It hears the tone and knows
+the usage, so a *clear* preference is strong evidence, and agrees with the particle the
+standard writers chose far more often than not; a *lean* is weak. It can still prefer a
+particle the scene rules out, so meaning decides first. On a draft it wrote itself it only
+repeats its own choice: not independent there.
+
 **Stock Qwen3-ASR (`≠qw`, `asr_qwen`).** The more independent witness. It writes 咁, 邊, 著
 and 呀 whatever was said, so its spelling of those is no evidence (the render hides those
 differences). It often hears the right syllables but picks the wrong characters (攞攞攣 for
@@ -65,7 +74,7 @@ differences). It often hears the right syllables but picks the wrong characters 
 **Both recognisers agreeing against the draft** is the strongest *audio* signal: it says how
 the line most likely sounds, not what it means. They share mishearings, so their agreement
 settles a fix only when the fix also means what `R` says. One recogniser alone is weak.
-Neither is evidence about particles.
+The particles they write in their transcripts are no evidence (the comparison above is).
 
 **Hard to hear (`! hard to hear`).** Draft characters the aligner barely matches to the audio
 where it placed them. They catch about half of real character errors, at about one real error

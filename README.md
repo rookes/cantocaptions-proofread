@@ -79,7 +79,7 @@ Defaults, relative to this directory:
 | cantocaptions-ai (ASR, alignment, vocal isolation, diarization, OCR) | `../cantocaptions-ai/` |
 | media files the dataset links to | `E:/dataset_media/` |
 | your own media folders | `media_dirs` (none by default) |
-| words.hk dictionary | `dictionaries/words-hk-full-bilingual.json` |
+| words.hk dictionary (its CSV export; every words.hk lookup reads this one file) | `dictionaries/words.hk-ordered.csv` |
 | per-show name glossaries (kept by the agent) | `glossaries/<show_slug>.md` |
 
 ### Windows console encoding
@@ -111,6 +111,7 @@ profile so every session (including an agent's, if its terminal loads the profil
 | command | does |
 |---|---|
 | `ccp setup` | which optional repos and media folders this machine has; record first-use answers |
+| `ccp glossaries` | every show glossary on this machine, with how many names each has (`ccp status` names the episode's own) |
 | `ccp locate "<show> S1E03"` | find subtitle + media (WIP files too; media inferred from sibling episodes when the dataset has none, or searched for by name in your media folders), create the workspace |
 | `ccp pipeline <id> realign --mode adjust` / `transcribe` | (GPU) run cantocaptions-ai on the episode; its output becomes the working draft |
 | `ccp publish <id>` | copy a pipeline draft back over the source file in CantoCaptions |
@@ -124,6 +125,7 @@ profile so every session (including an agent's, if its terminal loads the profil
 | `ccp sounds-like <span> --hyp …` | words that sound like a suspect span (words.hk + strict corpus) |
 | `ccp dict` | words.hk dictionary (particles are looked up by their reading) |
 | `ccp corpus` | evidence from strict-tier subtitles only; `--final` counts the particles that end a phrase |
+| `ccp particles scan <id>` / `explain 喇` / `colloc <phrase>` / `model <id>` / `note add` | sentence-final particles: every particle of a draft with what the standards, the fine-tuned recogniser (GPU `model`) and the strict-corpus and recorded collocations say; one particle's usage; which phrases pull which particle; record a collocation (`particles/collocations.toml`) |
 | `ccp listen`, `ccp score` | (GPU) re-run recognisers on a cue; CTC-score candidate texts (from stored emissions, no GPU). Both take many cues from `--json-file` |
 | `ccp clean <id> --lint` / `--edits FILE` | text-only cleanup of machine-made drafts: bulk edits, recorded as flags and applied at once |
 | `ccp flag add/keep/update/list` | record each decision: grade fix / suggest / query / keep, with a required reason |

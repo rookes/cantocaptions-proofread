@@ -1,0 +1,35 @@
+ID,Term,Altterm,Reading,Alt_Reading,Explanation,Examples,isReviewed,isPublished,POS_Yue,POS_Eng,POS_Eng_abbr,Labels_Yue,Labels_Eng,Labels_Eng_abbr,Synonyms,Antonyms,Definition_Yue,Definition_Eng,Measure_Word,Main_Example_Yue,Main_Example_Eng,Other_Examples
+55295.0,囉,,lo1,,"(pos:助詞)
+<explanation>
+yue:用嚟指出一樣嘢顯而易見
+eng:used to point out something seemingly obvious","yue:#係囉！ (hai6 lo1!)
+eng:Of course!
+<eg>
+yue:架車咪喺對面囉，噉都睇唔到！ (gaa3 ce1 mai6 hai2 deoi3 min6 lo1, gam2 dou1 tai2 m4 dou2!)
+eng:The car is right opposite to you. You didn't even notice it?",True,True,助詞,particle,part.,,,,,,用嚟指出一樣嘢顯而易見,used to point out something seemingly obvious,,,,
+55295.0,囉,,lo1,,"(pos:助詞)
+<explanation>
+yue:用嚟指出一樣嘢顯而易見
+eng:used to point out something seemingly obvious","yue:#係囉！ (hai6 lo1!)
+eng:Of course!
+<eg>
+yue:架車咪喺對面囉，噉都睇唔到！ (gaa3 ce1 mai6 hai2 deoi3 min6 lo1, gam2 dou1 tai2 m4 dou2!)
+eng:The car is right opposite to you. You didn't even notice it?",True,True,助詞,particle,part.,,,,,,用嚟指出一樣嘢顯而易見,used to point out something seemingly obvious,,,,
+1.0,仆街,,puk1 gaai1,,"(pos:名詞)(label:粗俗)
+<explanation>
+yue:衰人
+eng:jerk","yue:佢真係正仆街。
+eng:[ChatGPT]He is a real jerk.",False,False,名詞,noun,n.,粗俗、俚語,vulgar; slang,vulgar; slang,冚家鏟、契弟,,衰人,jerk,（量詞：個／條）,,,
+2.0,應付,,jing3 fu6,,"(pos:動詞)
+<explanation>
+yue:對付
+eng:to handle","
+zho:你可好生給我應付着。 (nei5 ho2 hou2 sang1 kap1 ngo5 jing3 fu6 zoek6.)
+yue:你好好哋同我應付下。 (nei5 hou2 hou2 dei2 tung4 ngo5 jing3 fu6 haa5.)
+yue:你小心啲同我應付下。 (nei5 siu2 sam1 di1 tung4 ngo5 jing3 fu6 haa5.)
+eng:Handle it carefully for me.",True,True,動詞,verb,v.,,,,,,對付,to handle,,,,
+3.0,頒獎,頒奬,baan1 zoeng2,,"(pos:動詞)
+<explanation>
+yue:送贈獎品
+eng:to award",,True,True,動詞,verb,v.,,,,,,送贈獎品,to award,,,,
+4.0,黑白,,hak1 baak6,haak1 baak6,,,,,,,,,,,,,,,,,,

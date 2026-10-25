@@ -2,7 +2,9 @@
 
 Request: {"episode_id", "srt", "media", "audio_track", "models": ["ft","qw"],
           "gap": 0.8, "max_len": 20.0, "pad": 0.5, "diarize": false, "out_dir"}
-Writes out_dir/evidence.jsonl (one row per cue) and out_dir/groups.jsonl.
+Writes out_dir/evidence.jsonl (one row per cue) and out_dir/groups.jsonl, and, when the
+fine-tuned model runs, out_dir/particle_model.jsonl: its likelihood for every clause-final
+particle and its alternatives (gpu/particles.py), scored while the model is loaded.
 
 Per group (see ccp.groups): each ASR model transcribes the padded group audio once; the
 aligner force-aligns each hypothesis against the group audio and every hypothesis
@@ -25,9 +27,11 @@ from pathlib import Path
 
 import numpy as np
 
-from _common import SAMPLE_RATE, asr_texts, done, free, io, is_sound, load_media_audio, status
+from _common import SAMPLE_RATE, asr_texts, done, free, io, is_sound, load_asr, load_media_audio, status
+import particles
 from aligner import Aligner, final_particle_mask
 from ccp.groups import make_groups
+from ccp.particles import group_items
 from ccp.srtio import SrtFile
 
 
@@ -75,9 +79,21 @@ def main():
     status(f"{len(cues)} cues in {len(groups)} groups")
 
     hyps: dict[str, list[str]] = {}
+    particle_rows = None
     for tag in req.get("models", ["ft", "qw"]):
         status(f"ASR {tag}...")
-        hyps[tag] = asr_texts(tag, clips)
+        if tag == particles.MODEL and req.get("particles", True):
+            # The fine-tuned model is loaded anyway: score every particle while it is.
+            stage = load_asr(tag)
+            hyps[tag] = asr_texts(tag, clips, stage)
+            items = group_items(cues, groups)
+            index = {g.index: i for i, g in enumerate(groups)}
+            status(f"particles: {sum(len(it['spots']) for it in items)} in {len(items)} groups...")
+            particle_rows = particles.score(stage, items, [clips[index[it["key"]]] for it in items])
+            del stage
+            free()
+        else:
+            hyps[tag] = asr_texts(tag, clips)
 
     status("aligning...")
     al = Aligner()
@@ -126,7 +142,8 @@ def main():
     if req.get("diarize"):
         status("diarizing...")
         from cantocaptions_ai.pipeline.diarize import load_diarization
-        dia = load_diarization(device="cuda", scope="file")
+        from cantocaptions_ai.utils.model_utils import load_with_offline_fallback
+        dia = load_with_offline_fallback(load_diarization, device="cuda", scope="file")
         turns = dia.process(audio)["turns"]
         del dia
         free()
@@ -143,11 +160,15 @@ def main():
                 if sa and sb and sa != sb:
                     by_cue[b]["speaker_change"] = True
 
+    if particle_rows is not None:
+        (out_dir / "particle_model.jsonl").write_text(
+            "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in particle_rows), encoding="utf-8")
     (out_dir / "evidence.jsonl").write_text(
         "".join(json.dumps(by_cue[c.pos], ensure_ascii=False) + "\n" for c in cues), encoding="utf-8")
     (out_dir / "groups.jsonl").write_text(
         "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in group_rows), encoding="utf-8")
     done(result_path, {"cues": len(cues), "groups": len(groups), "models": list(hyps),
+                       "particles_scored": len(particle_rows) if particle_rows is not None else None,
                        "diarized": bool(req.get("diarize")), "seconds": round(time.time() - t0, 1)})
 
 

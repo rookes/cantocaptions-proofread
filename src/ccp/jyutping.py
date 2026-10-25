@@ -15,7 +15,7 @@ from functools import lru_cache
 
 from . import dictionary, paths
 
-CACHE_VERSION = 1
+CACHE_VERSION = 2
 
 
 def is_cjk(ch: str) -> bool:

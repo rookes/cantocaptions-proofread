@@ -42,8 +42,9 @@ def found_by(f: dict, sig: dict[int, dict]) -> list[str]:
 def compute(episode_id: str) -> dict:
     ep = episode.load(episode_id)
     n_cues = len(episode.srt(ep).cues) if ep.get("srt") else 0
+    from . import rounds
     sig = signals.snapshot(episode_id)
-    records = flagstore.load(episode_id)
+    records = flagstore.in_round(episode_id)          # this review round only
     by_cue: dict[int, list[dict]] = {}
     for f in records:
         by_cue.setdefault(f["cue"], []).append(f)
@@ -69,6 +70,9 @@ def compute(episode_id: str) -> dict:
     proposals = [f for f in records if is_change(f)]
 
     activity = episode.read_jsonl(episode_id, "activity.jsonl")
+    started = rounds.state(episode_id).get("started")
+    if started and rounds.current(episode_id) > 1:
+        activity = [a for a in activity if a.get("at", "") >= started]
     cmds = Counter(a["cmd"] for a in activity)
     minutes = None
     if len(activity) > 1:

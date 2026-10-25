@@ -8,12 +8,11 @@ The ASR models are loaded for the request and unloaded after it.
 """
 from __future__ import annotations
 
-from _common import SAMPLE_RATE, asr_texts, done, free, io, status
+from _common import SAMPLE_RATE, asr_texts, done, free, io, load_isolation, status
 
 
 def isolate(clips):
-    from cantocaptions_ai.pipeline.vocal_isolation import load_vocal_isolation
-    proc = load_vocal_isolation("mbroformer", "cuda")
+    proc = load_isolation()
     items = [{"audio_path": f"clip{i}", "vad_segments": [
         {"start": 0.0, "end": len(c) / SAMPLE_RATE, "audio": c}]} for i, c in enumerate(clips)]
     out = proc.run(items)

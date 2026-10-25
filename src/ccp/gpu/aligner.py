@@ -74,8 +74,10 @@ class Aligner:
     def __init__(self):
         import torch
         from cantocaptions_ai.pipeline.alignment import _get_blank_id, load_align_model
+        from cantocaptions_ai.utils.model_utils import load_with_offline_fallback
         self.torch = torch
-        self.model, self.meta = load_align_model("yue", DEVICE)
+        self.model, self.meta = load_with_offline_fallback(load_align_model, "yue", DEVICE,
+                                                           model_cache_only=False)
         self.dictionary = self.meta["dictionary"]
         self.repair = self.meta["vocab_repair"]
         self.blank = _get_blank_id(self.dictionary)

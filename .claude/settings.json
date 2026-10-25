@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "ask": [
+      "Edit(/src/**)", "Write(/src/**)", "Edit(src/**)", "Write(src/**)",
+      "Edit(/scripts/**)", "Write(/scripts/**)", "Edit(scripts/**)", "Write(scripts/**)",
+      "Edit(/tests/**)", "Write(/tests/**)", "Edit(tests/**)", "Write(tests/**)",
+      "Edit(/config/**)", "Write(/config/**)", "Edit(config/**)", "Write(config/**)",
+      "Edit(/.agents/**)", "Write(/.agents/**)", "Edit(.agents/**)", "Write(.agents/**)",
+      "Edit(/particles/**)", "Write(/particles/**)", "Edit(particles/**)", "Write(particles/**)",
+      "Edit(/dictionaries/**)", "Write(/dictionaries/**)", "Edit(dictionaries/**)", "Write(dictionaries/**)",
+      "Edit(/AGENTS.md)", "Write(/AGENTS.md)", "Edit(AGENTS.md)", "Write(AGENTS.md)",
+      "Edit(/CLAUDE.md)", "Write(/CLAUDE.md)", "Edit(CLAUDE.md)", "Write(CLAUDE.md)",
+      "Edit(/pyproject.toml)", "Write(/pyproject.toml)", "Edit(pyproject.toml)", "Write(pyproject.toml)"
+    ]
+  }
+}

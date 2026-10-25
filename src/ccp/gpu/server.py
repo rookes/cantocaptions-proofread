@@ -1,5 +1,5 @@
-"""The GPU server: keeps the ASR models loaded between `ccp listen` calls, so a proofreading
-pass loads each model once instead of once per call. (`ccp score` needs no GPU: it reads the
+"""The GPU server: keeps the ASR models loaded between `ccp listen` (and `ccp particles model`)
+calls, so a proofreading pass loads each model once instead of once per call. (`ccp score` needs no GPU: it reads the
 emissions `ccp evidence` stored.)
 
     pythonw server.py <state.json> <idle seconds>
@@ -33,7 +33,7 @@ LOG = STATE.with_suffix(".log")
 sys.stdout = sys.stderr = open(LOG, "a", encoding="utf-8", buffering=1)
 
 import _common  # noqa: E402  (sets up sys.path for cantocaptions_ai and ccp)
-from _common import SAMPLE_RATE, free, load_asr, load_media_audio  # noqa: E402
+from _common import SAMPLE_RATE, free, load_asr, load_isolation, load_media_audio  # noqa: E402
 
 NEED_MB = {"ft": 4400, "qw": 4200, "isolate": 2500}
 MARGIN_MB = 300
@@ -77,9 +77,8 @@ class Models:
 
     def isolate(self, clips):
         """Vocal isolation is rare: loaded for the request, after making room, then dropped."""
-        from cantocaptions_ai.pipeline.vocal_isolation import load_vocal_isolation
         self.make_room("isolate")
-        proc = load_vocal_isolation("mbroformer", "cuda")
+        proc = load_isolation()
         items = [{"audio_path": f"clip{i}", "vad_segments": [
             {"start": 0.0, "end": len(c) / SAMPLE_RATE, "audio": c}]} for i, c in enumerate(clips)]
         out = proc.run(items)
@@ -108,6 +107,9 @@ def run(script: str, req: dict) -> dict:
         import listen
         return listen.handle(req, clip_fn(req), stage_for=MODELS.get, order=MODELS.order,
                              isolator=MODELS.isolate)
+    if script == "particles":
+        import particles
+        return particles.handle(req, clip_fn(req), stage_for=MODELS.get)
     raise ValueError(f"unknown script {script!r}")
 
 

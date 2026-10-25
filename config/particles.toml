@@ -1,0 +1,63 @@
+# Sentence-final particles a speaker could have said instead of one another, for
+# `ccp particles` (src/ccp/particles.py). Each candidate it scores or compares is the cue with
+# one clause-final particle swapped for another from these lists. Seeded from the standards
+# (references/particle-usage.md and conventions.md: the pairs to keep apart).
+
+# Confusion sets: particles told apart by tone or vowel. A particle belongs to one set.
+[sets]
+laa = "啦喇嘞囖咯囉嚛"
+aa = "吖啊呀"
+gaa = "㗎嘎𠿪嘅𠸏"
+ze = "啫唧咋吒喳"
+wo = "喎啝𡁜"
+le = "呢哩咧"
+
+# Further alternatives across sets, both ways: requests (坐吖 / 坐啦), goodbyes and
+# assessments (我走先喇 / 我走先啊, 太熱喇 / 太熱啊), hypotheses (可能係噉啦 / 可能係噉呢).
+[pairs]
+"吖" = "啦"
+"喇" = "啊"
+"啦" = "呢"
+
+# Tone 4 turns a statement particle into a question (particle-usage: Question-Specific
+# Particles). Statement -> question.
+[question]
+"喇" = "嗱"
+"㗎" = "嘎"
+"啊" = "呀"
+"咋" = "喳"
+"喎" = "啝"
+
+# Compound runs that compete as a whole (particle-usage: Compound Particles, 我都話咗…).
+[compounds]
+gaa_laa = ["㗎喇", "㗎啦", "㗎嗱", "嘎嗱", "嚛"]
+maa = ["吖嘛", "啦嘛", "𠺢嘛", "吒嘛"]
+
+[candidates]
+max = 8          # alternatives per particle, besides the draft's own
+
+# How strongly the fine-tuned recogniser must prefer one candidate (log-likelihood margin,
+# in nats, over the next best) before `ccp particles` calls it "clear" or a "lean". Set from
+# cantocaptions-ai scripts/eval_particle_scoring.py on held-out shows (its
+# docs/particle-scoring.md has the measurements): at `clear` it doubts very few correct
+# particles and still catches most wrong ones. With `calibrated = false` a preference is only
+# ever shown as a lean.
+[model]
+calibrated = true
+clear = 4.0
+lean = 2.0
+# Pairs it tells apart poorly (measured): its preference between them is a lean at most.
+weak_pairs = ["吖啊", "嘅㗎"]
+
+# Mined strict-corpus collocations (src/ccp/colloc.py). A phrase is notable when it occurs in
+# min_clauses clauses across min_shows shows, and lifts its particle to min_lift times that
+# particle's usual rate, significantly (min_z). It counts against the draft's particle (`ccp
+# particles scan`) when the other particle takes other_share of its clauses and the draft's at
+# most draft_share (and at most half its usual rate).
+[colloc]
+min_clauses = 20
+min_shows = 3
+min_z = 3.0
+min_lift = 1.3
+other_share = 0.75
+draft_share = 0.15

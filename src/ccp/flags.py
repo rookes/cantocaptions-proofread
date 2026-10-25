@@ -27,7 +27,7 @@ CATEGORIES = ["mishearing", "standard", "particle", "punctuation", "name", "miss
 GRADES = ["fix", "suggest", "query", "keep"]
 STATUSES = ["open", "investigated", "accepted", "rejected", "applied", "kept"]
 SOURCES = ["reference", "asr_ft", "asr_qwen", "sounds_like", "dict", "corpus", "ctc", "lint",
-           "context", "glossary", "listen"]
+           "context", "glossary", "listen", "guide", "standards", "particle_model", "colloc"]
 FILE = "flags.jsonl"
 MIN_REASON = 6          # characters; a reason is a sentence, not a word
 
@@ -48,11 +48,19 @@ def _migrate(f: dict) -> dict:
     if "reason" not in f:
         f["reason"] = f.pop("note", "") or ""
     f.pop("note", None)
+    f.setdefault("round", 1)        # records from before review rounds (rounds.py)
     return f
 
 
 def load(episode_id: str) -> list[dict]:
     return [_migrate(f) for f in episode.read_jsonl(episode_id, FILE)]
+
+
+def in_round(episode_id: str, records: list[dict] | None = None) -> list[dict]:
+    """The records of the review round the report shows (rounds.current)."""
+    from . import rounds
+    n = rounds.current(episode_id)
+    return [f for f in (load(episode_id) if records is None else records) if f["round"] == n]
 
 
 def save(episode_id: str, flags: list[dict]) -> None:
@@ -125,8 +133,10 @@ def add(episode_id: str, cue: int, category: str, grade: str, proposed: str | No
     """*proposed_cues* (a retime or a split: [{start, end, text}]) replaces the cue's timing
     and may turn it into several cues; *proposed* alone changes only its text. A cue whose
     earlier flag was already applied (or kept) can take a new record."""
+    from . import rounds
     ep = episode.load(episode_id)
     srt = episode.srt(ep)
+    round_no = rounds.begin(episode_id)      # before loading: a new round moves undecided records
     flags = load(episode_id)
     existing = [f for f in flags if f["cue"] == cue and f["status"] not in ("rejected", "applied", "kept")]
     if existing and not replace:
@@ -138,7 +148,7 @@ def add(episode_id: str, cue: int, category: str, grade: str, proposed: str | No
     prop = from_display(proposed) if proposed is not None else None
     flag = {
         "id": max([f["id"] for f in load(episode_id)] + [0]) + 1,
-        "cue": cue, "related": sorted(set(related)),
+        "cue": cue, "round": round_no, "related": sorted(set(related)),
         "start": c.start, "end": c.end,
         "draft": c.text,
         "proposed": prop,
@@ -158,6 +168,7 @@ def add(episode_id: str, cue: int, category: str, grade: str, proposed: str | No
     }
     validate(flag, len(srt.cues))
     _check_meaning(episode_id, srt, flag)
+    _check_particle_fix(ep, flag)
     flags.append(flag)
     flags.sort(key=lambda f: (f["cue"], f["id"]))
     save(episode_id, flags)
@@ -192,6 +203,41 @@ def _check_meaning(episode_id: str, srt, flag: dict) -> None:
             "belongs to another line or is a loose translation, say so in that evidence line.")
 
 
+PARTICLE_MEANING = ("guide", "standards")
+PARTICLE_SUPPORT = ("particle_model", "corpus", "colloc")
+
+
+def particle_fix_problems(ep: dict, flag: dict) -> list[str]:
+    """What a particle fix still needs ([] when it may stand as a fix). A particle change is a
+    fix only when the standards' meaning fits the scene and an independent, measured signal
+    backs it: the fine-tuned recogniser's comparison, a strict-corpus or recorded collocation.
+    On a draft the fine-tuned recogniser wrote, its comparison is not independent, so it cannot
+    be that signal. A wrong character for the particle's reading (a lint finding) is a
+    convention fix and needs neither."""
+    if (flag["category"] != "particle" or flag["grade"] != "fix" or flag.get("pass") == "cleanup"
+            or any(e["source"] == "lint" for e in flag["evidence"])):
+        return []
+    sources = {e["source"] for e in flag["evidence"]}
+    machine = episode.machine_draft(ep)
+    support = set(PARTICLE_SUPPORT) - ({"particle_model"} if machine else set())
+    missing = []
+    if not sources & set(PARTICLE_MEANING):
+        missing.append('a "guide:" (or "standards:") line saying which usage the proposed particle has '
+                       "here and why it fits the scene and the reference")
+    if not sources & support:
+        missing.append('an independent signal: "particle_model:" (the fine-tuned recogniser clearly '
+                       'prefers it' + (", not usable here: it wrote this draft" if machine else "")
+                       + '), "corpus:" or "colloc:" (a strict-corpus or recorded collocation)')
+    return missing
+
+
+def _check_particle_fix(ep: dict, flag: dict) -> None:
+    missing = particle_fix_problems(ep, flag)
+    if missing:
+        raise ValueError(f"cue {flag['cue']}: a particle fix needs " + " and ".join(missing)
+                         + ". Without them, grade it suggest (the reviewer decides) or query.")
+
+
 def update(episode_id: str, flag_id: int, **changes) -> dict:
     ep = episode.load(episode_id)
     n = len(episode.srt(ep).cues)
@@ -213,6 +259,7 @@ def update(episode_id: str, flag_id: int, **changes) -> dict:
                 f["status"] = "kept"
             f["reason"] = check_reason(f.get("reason"), f.get("proposed"), f["draft"])
             validate(f, n)
+            _check_particle_fix(ep, f)
             save(episode_id, flags)
             return f
     raise ValueError(f"no flag {flag_id}")

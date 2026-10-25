@@ -29,7 +29,8 @@ from pathlib import Path
 from . import paths
 
 GPU_DIR = Path(__file__).resolve().parent / "gpu"
-SERVED = {"listen"}
+SERVED = {"listen", "particles"}
+NOTES: list[str] = []           # what went wrong on the way, for the command's output
 IDLE_S = 900                    # the server stops itself after this long unused
 START_TIMEOUT_S = 60
 
@@ -169,6 +170,9 @@ def run(script: str, request: dict, timeout: float | None = None) -> dict:
             return _served(script, request)
         except ServerUnavailable as e:
             print(f"  [gpu] {e}; running {script} on its own instead", file=sys.stderr, flush=True)
+            from .detach import SANDBOX_HINT
+            NOTES.append(f"the GPU server did not start ({e}), so this call loaded the models itself, "
+                         f"and every later call will too (about a minute each). {SANDBOX_HINT}")
     if script not in SERVED:
         stop_server(f"{script} needs the GPU")
     return _one_shot(script, request, timeout)
@@ -197,6 +201,13 @@ def _one_shot(script: str, request: dict, timeout: float | None = None) -> dict:
             proc.wait(timeout=timeout)
         if proc.returncode != 0 or not res_p.exists():
             tail = "\n".join(lines[-30:])
+            if any("out of memory" in ln.lower() for ln in lines):
+                # cantocaptions-ai's own advice (--chunk_size, --batch_size) is for the pipeline's
+                # command line; none of it applies to a ccp command.
+                raise SystemExit(f"GPU script {script} ran out of GPU memory. Close other programs "
+                                 "using the GPU (a game, video, or another ccp or cantocaptions run), "
+                                 "then run the same ccp command again, unchanged. If it fails again, "
+                                 f"tell the user; do not change its options.\n{tail}")
             raise SystemExit(f"GPU script {script} failed (exit {proc.returncode}). Is the GPU free "
                              f"(>= 8 GB) and are cantocaptions-ai's models downloaded?\n{tail}")
         return json.loads(res_p.read_text(encoding="utf-8"))

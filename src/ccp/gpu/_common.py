@@ -49,8 +49,26 @@ def load_media_audio(media: str, track: int, start: float | None = None, end: fl
 
 
 def load_asr(tag: str):
+    """An ASR model batched and compiled as the pipeline runs it (PipelineConfig.batch_size,
+    .compile). Without a batch size every clip of an episode goes into the first batch: it runs
+    out of memory, and the halving retries leave the allocator holding the whole cap, the card
+    almost full and the rest of the pass at the mercy of whatever else uses the GPU. Uncompiled,
+    batch 8 is slow (each decode step costs about the same whatever the batch); compiled it
+    is fast, and `auto` compiles only when there are enough batches to repay it (so `listen`'s
+    few clips run uncompiled) and runs uncompiled where Triton is missing."""
     from cantocaptions_ai.pipeline.asr import load_model
-    return load_model(ASR_MODELS[tag], DEVICE, language="yue")
+    from cantocaptions_ai.pipeline.config import PipelineConfig
+    from cantocaptions_ai.utils.model_utils import load_with_offline_fallback
+    return load_with_offline_fallback(load_model, ASR_MODELS[tag], DEVICE, language="yue",
+                                      batch_size=PipelineConfig.batch_size, compile=PipelineConfig.compile,
+                                      local_files_only=False)
+
+
+def load_isolation():
+    """The vocal isolation model (`ccp listen --isolate`)."""
+    from cantocaptions_ai.pipeline.vocal_isolation import load_vocal_isolation
+    from cantocaptions_ai.utils.model_utils import load_with_offline_fallback
+    return load_with_offline_fallback(load_vocal_isolation, "mbroformer", "cuda", local_files_only=False)
 
 
 def asr_texts(tag: str, clips: list, stage=None) -> list[str]:

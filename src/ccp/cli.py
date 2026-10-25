@@ -65,13 +65,73 @@ def cmd_status(a):
            if machine or done else {}),
         "reference": json.loads(ref.read_text(encoding="utf-8")) if ref.exists() else None,
         "evidence": (w / "evidence.jsonl").exists(),
+        "particle_scores": (w / "particle_model.jsonl").exists(),
         "emissions": (w / "emissions" / "tokens.json").exists(),
-        "flags": flags.summary(rows), "report": _report_status(a.id, w),
+        "flags": flags.summary(flags.in_round(a.id, rows)), "review_round": _round_status(a.id),
+        "report": _report_status(a.id, w),
         "prunable_mb": reclaimable_mb(a.id),
         "gpu_server": gpu_bridge.server_status(),
         **({"pruned": ep["pruned"]} if ep.get("pruned") else {}),
         "tools": _tools(),
+        "glossary": _glossary_status(ep.get("show_slug")),
     })
+
+
+def _glossary_status(show_slug: str | None) -> dict | None:
+    """The show's glossary: its path (relative to this repo), whether it exists yet, and how
+    many names it holds. Read it with a file tool; create it at that path if it is missing."""
+    from . import paths
+    if not show_slug:
+        return None
+    p = paths.get("glossaries") / f"{show_slug}.md"
+    out = {"path": _rel(p), "exists": p.exists()}
+    if p.exists():
+        out["names"] = _glossary_names(p)
+    # The same show filed under another slug (a year added or dropped, a renamed show folder).
+    import difflib
+    others = [g for g in _glossary_files() if g.stem != show_slug and (
+        g.stem.startswith(show_slug) or show_slug.startswith(g.stem)
+        or difflib.SequenceMatcher(None, g.stem, show_slug).ratio() >= 0.8)]
+    if others:
+        out["similar"] = [_rel(g) for g in others]
+    return out
+
+
+def _rel(p: Path) -> str:
+    from . import paths
+    return p.relative_to(paths.ROOT).as_posix() if p.is_relative_to(paths.ROOT) else str(p)
+
+
+def _glossary_files() -> list[Path]:
+    from . import paths
+    d = paths.get("glossaries")
+    return sorted(g for g in d.glob("*.md") if g.name != "README.md") if d.is_dir() else []
+
+
+def _glossary_names(p: Path) -> int:
+    return len([ln for ln in p.read_text(encoding="utf-8").splitlines()
+                if ln.startswith("|") and not ln.startswith("|---") and "Correct" not in ln])
+
+
+def cmd_glossaries(a):
+    """Every show glossary on this machine: its path, show, how many names, when it last changed."""
+    import time
+    rows = []
+    for g in _glossary_files():
+        first = next((ln for ln in g.read_text(encoding="utf-8").splitlines() if ln.startswith("# ")), "")
+        rows.append({"path": _rel(g), "show": first[2:].replace(" glossary", "").strip() or g.stem,
+                     "names": _glossary_names(g),
+                     "changed": time.strftime("%Y-%m-%d", time.localtime(g.stat().st_mtime))})
+    _out({"glossaries": rows} if rows else {"glossaries": [], "note": "no glossaries yet"})
+
+
+def _round_status(episode_id: str) -> dict:
+    """Which review round the records and the report belong to (rounds.py)."""
+    from . import rounds
+    r = rounds.summary(episode_id)
+    r["means"] = ("applied: the next record you make starts a new round with a fresh report"
+                  if r["applied"] else "open: new records add to this round's report and its saved decisions")
+    return r
 
 
 def _report_status(episode_id: str, w: Path) -> dict | None:
@@ -101,14 +161,21 @@ def cmd_setup(a):
         st = setup.apply(a.set or [], a.add_media_dir or [], a.remove_media_dir or [], a.decline or [], a.done)
     else:
         st = setup.status()
-    _out(setup.as_text(st) if a.text else st)
+    # The session starts here: what ccp's own files look like now is what the rest of the
+    # session must leave alone (guard.py). Changes since the last session are the user's.
+    from . import guard
+    changed = guard.record()
+    if a.text:
+        note = f"\nccp's own files changed since the last session: {', '.join(changed)}" if changed else ""
+        return _out(setup.as_text(st) + note)
+    _out({**st, **({"code_changed_since_last_session": changed} if changed else {})})
 
 
 def cmd_reference(a):
     from . import gpu_bridge, reference
     if a.ocr:
         gpu_bridge.stop_server("OCR needs the GPU")
-    _out(reference.prepare(a.id, a.file, a.stream, a.ocr))
+    _out(reference.prepare(a.id, a.file, a.stream, a.ocr, a.ocr_lang))
 
 
 def cmd_evidence(a):
@@ -353,6 +420,112 @@ def cmd_corpus(a):
     _out(corpus.search(a.pattern, a.tier, a.show, a.examples, a.context))
 
 
+# ---------------------------------------------------------------------------- particles
+
+def cmd_particles(a):
+    return {"scan": _particles_scan, "model": _particles_model, "explain": _particles_explain,
+            "colloc": _particles_colloc, "note": _particles_note}[a.pcmd](a)
+
+
+def _particles_scan(a):
+    from . import episode, particle_scan
+    reports = particle_scan.scan(a.id, a.start, a.end)
+    summary = particle_scan.summary(reports)
+    if summary["slots"] and not summary["scored_by_model"]:
+        summary["hint"] = ("no fine-tuned recogniser scores yet: `ccp particles model <id>` (GPU), "
+                           "or `ccp evidence` scores them along the way")
+    text = particle_scan.as_text(reports, a.only_suspects)
+    if a.save:
+        p = episode.path(a.id, "particles.txt")
+        p.write_text(text + "\n", encoding="utf-8")
+        return _out({**summary, "saved": str(p),
+                     "read": "read it with your file-reading tool; `?` marks a suspect and its reasons"})
+    _out(json.dumps(summary, ensure_ascii=False) + "\n" + text)
+
+
+def _particles_model(a):
+    from types import SimpleNamespace
+    from . import episode, gpu_bridge
+    from .groups import make_groups
+    from .particles import group_items
+    ep = episode.load(a.id)
+    if not ep.get("media_exists"):
+        raise SystemExit("no media linked to this workspace")
+    gpu_bridge.require_ccai("`ccp particles model`")
+    srt = episode.srt(ep)
+    stored = episode.read_jsonl(a.id, "groups.jsonl")
+    groups = ([SimpleNamespace(index=g["group"], start=g["start"], end=g["end"], cues=g["cues"]) for g in stored]
+              if stored else make_groups(srt.cues))
+    if a.cue:
+        wanted = set(a.cue)
+        groups = [g for g in groups if wanted & set(g.cues)]
+    items = group_items(srt.cues, groups)
+    if not items:
+        return _out({"scored": 0, "note": "no clause-final particles with alternatives in those cues"})
+    res = gpu_bridge.run("particles", {"media": ep["media"], "audio_track": ep.get("audio_track", 0),
+                                       "models": ["ft"], "items": items})
+    done = {it["key"] for it in items}
+    kept = [r for r in episode.read_jsonl(a.id, "particle_model.jsonl") if r.get("group") not in done]
+    rows = sorted(kept + res["rows"], key=lambda r: (r["cue"], r["slot"]))
+    episode.write_jsonl(a.id, "particle_model.jsonl", rows)
+    _out({"scored": len(res["rows"]), "groups": len(items), "total_rows": len(rows),
+          "next": f"ccp particles scan {a.id} --only-suspects",
+          **({"gpu_server": " ".join(gpu_bridge.NOTES)} if gpu_bridge.NOTES else {})})
+
+
+def _particles_explain(a):
+    from . import colloc, dictionary, guide, jyutping
+    q = a.query.strip()
+    readings = jyutping.particle_readings()
+    if all(c in readings for c in q):
+        reading, chars = " ".join(readings[c] for c in q), q
+    else:
+        reading, chars = q, "".join(next((c for c, r in readings.items() if r == syl), "") for syl in q.split())
+    out = {"particle": chars, "reading": reading,
+           "standards": [guide.convention(c) for c in chars if guide.convention(c)],
+           "usage": [{"section": s.ref, "text": s.text} for s in guide.lookup(chars or reading)[:a.sections]],
+           "words_hk": dictionary.particle_senses(reading, 8, a.examples)}
+    if len(chars) == 1:
+        out["strict_corpus_pulls"] = [
+            f"{p.feature} → {p.share:.0%} {chars} of {p.n} clauses ({p.shows} shows)"
+            for p in colloc.top(chars, n=a.top)]
+        out["recorded"] = [n.__dict__ for n in colloc.notes() if chars in n.options or n.prefer == chars]
+    _out(out)
+
+
+def _particles_colloc(a):
+    from . import colloc, corpus, dictionary
+    from .particles import members
+    if a.top:
+        if not corpus.available():
+            return _out({"status": "unavailable", "reason": corpus.UNAVAILABLE})
+        rows = colloc.top(a.top, a.vs, n=a.limit)
+        return _out({"favours": a.top, "over": a.vs or "the rest of its set", "pulls": [
+            {"feature": p.feature, "clauses": p.n, "shows": p.shows, "share": round(p.share, 3),
+             "counts": p.dist} for p in rows]})
+    if not a.phrase:
+        raise SystemExit("give a PHRASE (a regex over the clause; $ = right before the particle), or --top PARTICLE")
+    among = a.among or "laa"
+    options = among.split("|") if "|" in among else list(members(among))
+    out = {"phrase": a.phrase, "among": options}
+    out["strict"] = (colloc.note_counts(a.phrase, among, examples=a.examples) if corpus.available()
+                     else {"status": "unavailable", "reason": corpus.UNAVAILABLE})
+    out["words_hk"] = dictionary.particle_examples(a.phrase, options, a.examples)
+    out["recorded"] = [n.__dict__ for n in colloc.search_notes(a.phrase)]
+    _out(out)
+
+
+def _particles_note(a):
+    from . import colloc
+    if a.note_cmd == "list":
+        rows = [n.__dict__ for n in colloc.notes() if not a.proposed or n.status == "proposed"]
+        return _out({"count": len(rows), "collocations": rows})
+    if not (a.trigger and a.among and a.note):
+        raise SystemExit("note add needs --trigger, --among and --note")
+    source = f"agent:{a.id}" if a.id else "agent"
+    _out(colloc.add_note(a.trigger, a.among, a.note, a.prefer or "", source, a.example))
+
+
 # ---------------------------------------------------------------------------- audio
 
 def read_json_items(path: str) -> list:
@@ -419,6 +592,8 @@ def cmd_listen(a):
     res["items"].extend(refused)
     res["note"] = ("A padded span includes neighbouring speech; compare only the part that "
                    "corresponds to the cue.")
+    if gpu_bridge.NOTES:
+        res["gpu_server"] = " ".join(gpu_bridge.NOTES)
     _out(res)
 
 
@@ -581,7 +756,7 @@ def cmd_flag(a):
                          evidence=a.evidence, reason=a.reason, status=a.status, alternatives=a.alt,
                          proposed_cues=pc)
         return _out(flags.fmt(f))
-    rows = flags.load(a.id)
+    rows = flags.load(a.id) if a.all else flags.in_round(a.id)
     if a.grade:
         rows = [f for f in rows if f["grade"] == a.grade]
     if a.status:
@@ -621,7 +796,10 @@ def _report_link(episode_id: str, page: Path, serve: bool = True, open_browser: 
         try:
             url = report_server.ensure()["url"] + f"/r/{episode_id}/"
         except RuntimeError as e:
-            out["server"] = f"the report server did not start ({e}): the file works too, with Download"
+            from .detach import SANDBOX_HINT
+            out["server"] = (f"the report server did not start ({e}). {SANDBOX_HINT} Do that before you "
+                             "tell the user anything: without the server the reviewer's decisions do not "
+                             "save into the workspace (the file only offers Download).")
     out["open"] = url or page.as_uri()
     out["saves_decisions"] = ("as the user reviews, into work/{0}/decisions.json: then "
                               "`ccp apply {0} --reviewed`".format(episode_id) if url else
@@ -665,6 +843,12 @@ def cmd_apply(a):
         decisions = str(saved)
     res = apply.apply(a.id, Path(decisions) if decisions else None, include_suggest,
                       a.include or [], a.dry_run, a.structure)
+    if not a.dry_run:
+        # This review round's decisions are acted on: the next record starts a fresh report.
+        from . import rounds
+        rounds.close(a.id)
+        res["review_round"] = ("applied: the report keeps showing this round until you record "
+                               "something new, which starts the next round with a fresh report")
     _out(res if a.dry_run or not res.get("applied") else _prune_hint(res, a.id))
 
 
@@ -729,10 +913,16 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("status", help="what the workspace holds so far")
     s.add_argument("id"); s.set_defaults(fn=cmd_status)
 
+    s = sub.add_parser("glossaries", help="every show glossary on this machine, with how many names each has")
+    s.set_defaults(fn=cmd_glossaries)
+
     s = sub.add_parser("reference", help="find / extract / OCR a reference subtitle and time it")
     s.add_argument("id"); s.add_argument("--file", help="use this subtitle file")
     s.add_argument("--stream", type=int, help="use this embedded stream (absolute stream index)")
     s.add_argument("--ocr", action="store_true", help="allow OCR of a bitmap track (ask the user first)")
+    s.add_argument("--ocr-lang", choices=["chinese_cht", "ch", "en", "japan", "korean"],
+                   help="with --ocr: the track's language when it has no language tag (ask the user): "
+                        "chinese_cht Traditional Chinese, ch Simplified Chinese, en, japan, korean")
     s.set_defaults(fn=cmd_reference)
 
     s = sub.add_parser("evidence", help="(GPU) both ASRs + aligner peaks for every cue")
@@ -787,6 +977,39 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--among", default="",
                    help="with --final: a particle family (laa, aa, gaa, ge, lo, wo, zaa, ze, gam) or literal chars")
     s.set_defaults(fn=cmd_corpus)
+
+    s = sub.add_parser("particles", help="sentence-final particles: scan a draft, score, explain, collocations")
+    ps = s.add_subparsers(dest="pcmd", required=True)
+    t = ps.add_parser("scan", help="every clause-final particle with what the standards, the fine-tuned "
+                                   "recogniser and the collocations say; ? marks a suspect")
+    t.add_argument("id"); t.add_argument("--from", dest="start", type=int, default=1)
+    t.add_argument("--to", dest="end", type=int)
+    t.add_argument("--only-suspects", action="store_true"); t.add_argument("--save", action="store_true",
+                                                                        help="write work/<id>/particles.txt to read")
+    t = ps.add_parser("model", help="(GPU) the fine-tuned recogniser's likelihood for each particle and its "
+                                    "alternatives (ccp evidence does this too)")
+    t.add_argument("id"); t.add_argument("--cue", type=int, nargs="+", help="only the groups holding these cues")
+    t = ps.add_parser("explain", help="one particle (喇, 㗎喇) or reading (laa3): the standards' usage, "
+                                      "words.hk senses and examples, strict-corpus pulls, recorded collocations")
+    t.add_argument("query"); t.add_argument("--examples", type=int, default=3)
+    t.add_argument("--sections", type=int, default=4); t.add_argument("--top", type=int, default=10)
+    t = ps.add_parser("colloc", help="which particle ends clauses with PHRASE (strict corpus, words.hk, "
+                                     "recorded), or --top: what most favours a particle")
+    t.add_argument("phrase", nargs="?", help="regex over the clause; $ = right before the particle")
+    t.add_argument("--among", help="a set (laa, aa, gaa, ze, wo, le) or particles/runs separated by | (default laa)")
+    t.add_argument("--top", metavar="PARTICLE", help="the strict-corpus phrases that most favour this particle")
+    t.add_argument("--vs", metavar="PARTICLE", help="with --top: over this particle only")
+    t.add_argument("--examples", type=int, default=3); t.add_argument("--limit", type=int, default=20)
+    t = ps.add_parser("note", help="record a collocation for future runs (status proposed), or list them")
+    t.add_argument("note_cmd", choices=["add", "list"])
+    t.add_argument("--trigger", help="regex over the clause; $ = right before the particle")
+    t.add_argument("--among", help="a set name or the competing particles/runs separated by |")
+    t.add_argument("--prefer", help="the particle (or run) the phrase usually takes; omit when it depends on meaning")
+    t.add_argument("--note", help="what the choice means, citing the standards section (particle-usage: ...)")
+    t.add_argument("--example", action="append", default=[], help="'episode#cue  text'; repeatable")
+    t.add_argument("--id", help="the episode this came from")
+    t.add_argument("--proposed", action="store_true", help="list: only the ones awaiting the user")
+    s.set_defaults(fn=cmd_particles)
 
     for name, fn, helptext in (("listen", cmd_listen, "(GPU) re-run both ASRs on a cue or span"),
                                ("score", cmd_score, "CTC-score candidate texts against a cue's stored audio (CPU)")):
@@ -858,6 +1081,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="attach the retime/split that `ccp timing` saved for this cue")
     s.add_argument("--json-file", help="add: a JSON object or list of flags")
     s.add_argument("--json", action="store_true", help="list: raw JSON")
+    s.add_argument("--all", action="store_true", help="list: every review round, not only the current one")
     s.set_defaults(fn=cmd_flag)
 
     s = sub.add_parser("clean", help="text-only cleanup pass: record and apply confident edits in bulk")
@@ -926,6 +1150,11 @@ def main(argv=None) -> None:
         # server kept loaded for score and listen.
         from . import gpu_bridge
         gpu_bridge.stop_server("the pass is over" if args.cmd != "pipeline" else "pipeline needs the GPU")
+    if args.cmd != "setup":
+        from . import guard
+        changed = guard.changed()
+        if changed:
+            raise SystemExit(guard.refusal(changed))
     workspace = _workspace_of(args)
     if workspace and args.cmd in SNAPSHOT_FIRST:
         # What the tools point out on each cue, as the agent first sees it (see signals.py).
@@ -944,7 +1173,7 @@ def main(argv=None) -> None:
 
 
 # Commands that show the agent cues, or change them: the signals are recorded before each.
-SNAPSHOT_FIRST = {"render", "cue", "clean", "flag", "report"}
+SNAPSHOT_FIRST = {"render", "cue", "clean", "flag", "report", "particles"}
 
 
 def _workspace_of(args) -> str | None:

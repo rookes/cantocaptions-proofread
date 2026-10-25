@@ -25,9 +25,21 @@ needs_corpus = pytest.mark.skipif(
 needs_cantocaptions = pytest.mark.skipif(not _exists("subtitles"), reason="CantoCaptions not present")
 
 
+@pytest.fixture(autouse=True)
+def _code_unwatched(monkeypatch):
+    """Tests run while the code is being changed: the session tripwire (guard.py) stays out of
+    their way, except in its own tests."""
+    from ccp import guard
+    monkeypatch.setattr(guard, "changed", lambda: [])
+
+
 @pytest.fixture
 def workspace(tmp_path, monkeypatch):
-    """A throwaway episode workspace with a small SRT (BOM + CRLF), no media."""
+    """A throwaway episode workspace with a small SRT (BOM + CRLF), no media. Collocations
+    mined from the corpus are switched off, so the particle hints do not depend on whether
+    this machine has the corpus (the recorded ones in particles/ still apply)."""
+    from ccp import colloc
+    monkeypatch.setattr(colloc, "mined", lambda *a, **k: {"base": {}, "features": {}, "clauses": []})
     work = tmp_path / "work"
     monkeypatch.setattr(paths, "work_dir", lambda eid: (work / eid).mkdir(parents=True, exist_ok=True) or work / eid)
     srt = tmp_path / "ep.srt"

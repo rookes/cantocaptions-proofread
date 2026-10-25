@@ -4,6 +4,7 @@
     asr      a speech recogniser heard something else (`≠ft` / `≠qw` lines)
     weak     the aligner barely heard part of the cue (`!` line)
     timing   realign doubted the cue's timing (`T` line)
+    particle the particle scan doubted a sentence-final particle (`ccp particles scan`)
 
 A cue with none of these was found by the agent alone. They are kept in
 work/<id>/signals.json as first seen, so an edit that clears a lint hit does not erase the fact
@@ -23,6 +24,7 @@ KINDS = {
     "asr": ("Recognisers", "a speech recogniser heard something else"),
     "weak": ("Hard to hear", "part of the line barely matched the audio"),
     "timing": ("Timing", "the realign doubted its timing"),
+    "particle": ("Particle scan", "the particle scan doubted its sentence-final particle"),
 }
 FILE = "signals.json"
 
@@ -37,15 +39,24 @@ def current(episode_id: str) -> dict[int, dict]:
     evidence = {e["cue"]: e for e in episode.read_jsonl(episode_id, "evidence.jsonl")}
     linted = {r["cue"] for r in lint.lint_file(Path(ep["srt"]), ep.get("show_slug"))}
     timed = {r["cue"] for r in episode.read_jsonl(episode_id, "timing.jsonl")}
+    particled = _particle_suspects(episode_id)
     out = {}
     for c in cues:
         ev = evidence.get(c.pos, {})
         differ = asr_differences(c.text, ev)
         kinds = [k for k, on in (("lint", c.pos in linted), ("asr", bool(differ)),
                                  ("weak", bool(hard_to_hear(ev, bool(differ)))),
-                                 ("timing", c.pos in timed)) if on]
+                                 ("timing", c.pos in timed), ("particle", c.pos in particled)) if on]
         out[c.pos] = {"text": c.text, "kinds": kinds}
     return out
+
+
+def _particle_suspects(episode_id: str) -> set[int]:
+    from . import particle_scan
+    try:
+        return {r.cue for r in particle_scan.scan(episode_id) if r.suspect}
+    except Exception:   # the scan is a hint: never let it stop the command that asked
+        return set()
 
 
 def load(episode_id: str) -> dict[int, dict]:

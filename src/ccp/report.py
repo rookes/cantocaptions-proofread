@@ -171,10 +171,11 @@ def _reference_note(ep_id: str) -> dict | None:
 
 
 def build(episode_id: str, video: bool = False, include_rejected: bool = False) -> Path:
-    from . import signals, stats as passstats
+    from . import rounds, signals, stats as passstats
     ep = episode.load(episode_id)
     srt = episode.srt(ep)
-    flags = [f for f in flagstore.load(episode_id) if include_rejected or f["status"] != "rejected"]
+    # Only this review round: earlier rounds were applied and have their own (archived) decisions.
+    flags = [f for f in flagstore.in_round(episode_id) if include_rejected or f["status"] != "rejected"]
     flags.sort(key=lambda f: (GRADE_ORDER[f["grade"]], f["cue"]))
     work = episode.path(episode_id, "x").parent
     clips = work / "clips"
@@ -241,7 +242,7 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
         "reference": _reference_note(episode_id), "summary": flagstore.summary(flags), "video": video,
         "machine_draft": episode.machine_draft(ep), "audio_checked": bool(evidence),
         "kinds": {k: {"label": v[0], "tip": v[1]} for k, v in signals.KINDS.items()},
-        "stats": stats,
+        "stats": stats, "round": rounds.summary(episode_id),
     }
     page = TEMPLATE.replace("__TITLE__", html.escape(meta["title"])).replace(
         "__DATA__", json.dumps({"meta": meta, "items": items}, ensure_ascii=False).replace("</", "<\\/"))
@@ -344,9 +345,12 @@ th { color:var(--muted); font-weight:500; font-size:12px; } th:not(:first-child)
 <script id="data" type="application/json">__DATA__</script>
 <script>
 const D = JSON.parse(document.getElementById('data').textContent);
-const KEY = 'ccp-decisions-' + D.meta.episode_id;
+const KEY = 'ccp-decisions-' + D.meta.episode_id + '-round' + D.meta.round.round;
 let dec = {};
 try { dec = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) {}
+// Only this report's cards: a decision on a record from another round is not this review's.
+const IDS = new Set(D.items.map(i => String(i.id)));
+Object.keys(dec).forEach(k => { if (!IDS.has(String(k))) delete dec[k]; });
 const SERVED = location.protocol.startsWith('http');
 const save = () => {
   try { localStorage.setItem(KEY, JSON.stringify(dec)); } catch (e) {}
@@ -382,6 +386,7 @@ document.getElementById('top').innerHTML = `
     <dt>Reference</dt><dd>${ref ? esc(ref.text) + (ref.timing ? ` · ${esc(ref.timing)}` : '') : 'none: lines were judged from the conversation alone'}</dd>
     <dt>Audio</dt><dd>${m.audio_checked ? 'checked line by line' : (m.machine_draft ? 'not checked (a text-only cleanup)' : 'not checked')}${m.media ? ' · each card has a clip' : ' · no clips (no media)'}</dd>
     <dt>Subtitles</dt><dd>${esc(fileName(m.source_srt || m.srt))}</dd>
+    ${m.round.round > 1 ? `<dt>Review</dt><dd>round ${m.round.round}: earlier rounds were applied and are not shown</dd>` : ''}
   </dl>
   <div class="howto" id="howto">Play the clip, then <b>Accept</b> or <b>Reject</b> each card (edit the text first if you like).
     When you are done, press <b>Export decisions</b> and give <code>decisions.json</code> to the agent.</div>
@@ -595,7 +600,7 @@ if (SERVED) {
   });
   // Decisions saved earlier (in another browser, say) come back when this one has none.
   if (!Object.keys(dec).length) fetch('decisions').then(r => r.json()).then(saved => {
-    (saved.decisions || []).forEach(d => dec[d.flag] = { decision: d.decision, text: d.text });
+    (saved.decisions || []).filter(d => IDS.has(String(d.flag))).forEach(d => dec[d.flag] = { decision: d.decision, text: d.text });
     if (Object.keys(dec).length) { try { localStorage.setItem(KEY, JSON.stringify(dec)); } catch (e) {} render(); }
   }).catch(() => {});
 } else {

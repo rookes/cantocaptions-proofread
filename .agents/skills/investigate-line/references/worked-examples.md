@@ -1,6 +1,6 @@
 # Worked examples
 
-Three real decisions, one for each kind of outcome. The tool output is abridged.
+Four decisions: a fix, a keep, and two particle decisions. The tool output is abridged.
 
 ## 1. A fix: 食多都亂 → 實囉囉攣
 
@@ -93,8 +93,41 @@ uv run ccp flag add <id> --cue 131 --category particle --grade query \
   --evidence "reference: 人死了就不會說話 (a statement)"
 ```
 
+## 4. A particle fix: 一定係佢啦 → 一定係佢喇
+
+An illustration of the rule (AGENTS.md principle 4), not from a real episode.
+
+`ccp particles scan <id> --from 88 --to 88`:
+
+```
+? 88[0] 啦 laa1  ·  一定係佢啦
+    means: suggestion, urging, acceptance of a shared understanding, or obviousness …
+    R: 一定是他做的！
+    model: the fine-tuned recogniser clearly prefers 喇 over 啦
+    recorded (confirmed): 一定 → 喇: 一定…喇 states a certain fact; 一定…啦 says the listener should already know it …
+    strict: 一定 → 喇 67% of 159 (25 shows; 喇 107, 啦 35, 嘞 14, 囖 3)
+    recognisers wrote (weak): ft 喇 · qw 啊
+    ? the fine-tuned recogniser clearly prefers 喇 over 啦
+    ? recorded collocation (confirmed): 一定 usually takes 喇
+```
+
+**Meaning.** The previous cues show the speaker working out who did it, and `R` ends with
+"！": it is a discovery, announced as a certain fact. That is 喇 laa3 (`particle-usage.md`,
+喇 laa3, Usage 4: 一定係佢喇 "it's certainly him"). 啦 laa1 would mean "obviously, as you
+should know", which nothing in the scene sets up.
+
+**Signals.** The fine-tuned recogniser clearly prefers 喇, and 一定… takes 喇 in most strict
+subtitles. Both back the meaning, so this is a fix. (Had the scene been a sigh of "well, who
+else would it be", 啦 would stand, whatever the signals: meaning first.)
+
+```
+uv run ccp flag add <id> --cue 88 --category particle --grade fix --proposed "一定係佢喇"   --reason "The speaker announces a discovery as a certain fact (R 一定是他做的！), which is 喇 laa3; 啦 laa1 would say the listener should already know it"   --evidence "guide: 喇 laa3, Usage 4: a certain fact (一定係佢喇)"   --evidence "particle_model: the fine-tuned recogniser clearly prefers 喇 here"   --evidence "colloc: 一定… takes 喇 in most strict subtitles"
+```
+
 ## What the examples teach
 
 - Meaning comes first and comes from `R`. Sound chooses among wordings with that meaning.
 - Two recognisers agreeing is strong evidence of how a line *sounds*, never of what it means.
-- Particles are raised by meaning and settled by the reviewer.
+- Particles are raised and decided by meaning; the particles the recognisers write are no
+  evidence. A particle change is a fix only when the fine-tuned recogniser's comparison or a
+  collocation clearly backs the meaning; otherwise the reviewer settles it.

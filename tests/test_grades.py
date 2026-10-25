@@ -80,3 +80,27 @@ def test_cli_legacy_options_still_work(workspace):
     assert flags.load(workspace["id"])[0]["grade"] == "fix"
     cli.main(["apply", workspace["id"], "--min-severity", "suggested", "--min-confidence", "medium"])
     assert SrtFile(workspace["srt"]).cue(2).text == "阿媽實囉囉攣瞓唔着㗎"
+
+
+def test_particle_fix_needs_meaning_and_an_independent_signal(workspace):
+    eid = workspace["id"]
+    why = "一定得 states a certain fact, which 喇 laa3 says; 㗎啦 would say the listener should know it"
+    with pytest.raises(ValueError, match="guide"):
+        flags.add(eid, 4, "particle", "fix", "一定得㗎喇", ["corpus: 一定 ends in 喇 in most strict clauses"], why)
+    with pytest.raises(ValueError, match="independent signal"):
+        flags.add(eid, 4, "particle", "fix", "一定得㗎喇", ["guide: 喇 laa3, Usage 4"], why)
+    f = flags.add(eid, 4, "particle", "fix", "一定得㗎喇",
+                  ["guide: 喇 laa3, Usage 4: a certain fact", "particle_model: clearly prefers 喇"], why)
+    assert f["grade"] == "fix"
+    # Without the signal it is still fine as a suggestion for the reviewer.
+    s = flags.add(eid, 1, "particle", "suggest", "你畀我吖", ["guide: 吖 aa1, Usage 1"], "a polite request: 吖 aa1")
+    assert s["grade"] == "suggest"
+
+
+def test_particle_model_is_not_independent_on_a_machine_draft(workspace, monkeypatch):
+    from ccp import episode
+    monkeypatch.setattr(episode, "machine_draft", lambda ep: True)
+    with pytest.raises(ValueError, match="it wrote this draft"):
+        flags.add(workspace["id"], 4, "particle", "fix", "一定得㗎喇",
+                  ["guide: 喇 laa3, Usage 4", "particle_model: clearly prefers 喇"],
+                  "一定得 states a certain fact, which 喇 laa3 says")

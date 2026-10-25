@@ -32,7 +32,7 @@ def test_flag_validation(workspace):
 def test_apply_default_selection_and_text_only(workspace):
     raw_before = workspace["srt"].read_bytes()
     f1 = _add(workspace, 2, proposed="阿媽實囉囉攣瞓唔着㗎")
-    _add(workspace, 4, category="particle", proposed="一定得㗎喇")                 # never by default
+    _add(workspace, 4, category="particle", grade="suggest", proposed="一定得㗎喇")  # a suggestion: not by default
     _add(workspace, 1, category="standard", grade="suggest", proposed="你畀我啦")  # needs --include-suggest
     res = apply.apply(workspace["id"])
     assert [a["cue"] for a in res["applied"]] == [2]
@@ -88,3 +88,16 @@ def test_cue_compact_output(workspace, capsys):
     out = capsys.readouterr().out
     assert "── cue 2" in out and "── cue 3" in out
     assert "draft  -走喇⏎-等埋我啊" in out
+
+
+def test_a_backed_particle_fix_is_applied_and_an_old_one_is_not(workspace):
+    from ccp import episode
+    eid = workspace["id"]
+    _add(workspace, 4, category="particle", proposed="一定得㗎喇",
+         evidence=["guide: 喇 laa3, Usage 4", "colloc: 一定…喇 in most strict clauses"])
+    assert [a["cue"] for a in apply.apply(eid, dry_run=True)["applied"]] == [4]
+    # A particle fix recorded before the rule (no meaning or signal) stays with the reviewer.
+    rows = flags.load(eid)
+    rows[0]["evidence"] = [{"source": "reference", "detail": "old"}]
+    episode.write_jsonl(eid, "flags.jsonl", rows)
+    assert apply.apply(eid, dry_run=True)["applied"] == []

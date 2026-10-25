@@ -36,10 +36,25 @@ how to finish. Then wait. When they say they are done, `uv run ccp status <id>` 
 
 - Rebuilding a report the user already has open (after applying, say): add `--no-open`, and
   tell them to reload the page.
-- If the output has a `server` note, the server could not start. The page then works as a
-  plain file: the user presses **Export decisions**, which downloads `decisions.json`, and
-  gives you its path (`--decisions <path>` below). `--no-serve` does the same on purpose.
+- Run `ccp report` outside a sandboxed terminal (AGENTS.md, "Running ccp"): it starts the
+  server. If the output still has a `server` note, the server could not start: run the same
+  command again outside the sandbox before telling the user anything. Only if it fails there
+  too, the page works as a plain file: the user presses **Export decisions**, which downloads
+  `decisions.json`, and gives you its path (`--decisions <path>` below). `--no-serve` does the
+  same on purpose.
 - If the output reports failed clips, say so and quote `first_error`.
+
+### Another pass on a file proofread before
+
+Each pass is a review round (`review_round` in `ccp status`), and `ccp` handles it: you do
+nothing different.
+- **Applied** (`applied: true`): the first record you make starts a new round. The report then
+  shows only the new records, plus any earlier ones the reviewer never decided; the earlier
+  decisions are put aside.
+- **Not applied yet**: your new records join the same report, and the decisions the reviewer
+  already saved stay.
+
+`ccp flag list` shows the current round (`--all` for every round).
 
 ## Applying
 

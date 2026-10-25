@@ -12,6 +12,14 @@ import subprocess
 from pathlib import Path
 
 
+# Said whenever a detached server cannot start. Antigravity runs an agent's commands in a
+# terminal sandbox by default, which blocks starting a process that outlives the command (and
+# reaching it on localhost); the same command run outside the sandbox works.
+SANDBOX_HINT = ("If this command ran in a sandboxed terminal (Antigravity runs commands in one by "
+                "default), a server cannot start from it: run the same command again outside the "
+                "sandbox (in Antigravity, with BypassSandbox).")
+
+
 def windowless_python(python: Path) -> Path:
     """pythonw.exe beside *python* when there is one (no console window on Windows)."""
     w = python.with_name("pythonw.exe")

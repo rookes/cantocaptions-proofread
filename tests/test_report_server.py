@@ -56,7 +56,11 @@ def test_serves_the_report_and_clips_with_ranges(server):
 
 
 def test_saves_decisions_from_the_page_only(server, workspace):
+    from ccp import flags
+    flags.add("t", 1, "standard", "fix", "你畀我啦", ["lint: 俾"], "convention: 俾 → 畀 (variant)")
     good = {"episode_id": "t", "decisions": [{"flag": 1, "decision": "accepted", "text": "你畀我啦"}]}
+    stray = {"episode_id": "t", "decisions": good["decisions"] + [{"flag": 99, "decision": "rejected"}]}
+    assert _post(server + "/r/t/decisions", stray, origin=server)[1]["saved"] == 1   # not this round's
     status, reply = _post(server + "/r/t/decisions", good, origin=server)
     assert status == 200 and reply["ok"] and reply["saved"] == 1
     saved = json.loads((workspace["work"] / "decisions.json").read_text(encoding="utf-8"))
@@ -106,3 +110,26 @@ def test_heartbeat_and_stop_endpoints(server):
     assert _post(server + "/api/stop", {}, origin="http://evil.example")[0] == 403
     status, reply = _post(server + "/api/stop", {})
     assert status == 200 and reply["stopping"]
+
+
+def test_a_server_that_cannot_start_says_to_leave_the_sandbox(tmp_path, monkeypatch):
+    from ccp import cli, report_server
+    def fail():
+        raise RuntimeError("it did not answer within 20 s")
+    monkeypatch.setattr(report_server, "ensure", fail)
+    page = tmp_path / "report.html"
+    page.write_text("<html></html>", encoding="utf-8")
+    out = cli._report_link("t", page, serve=True, open_browser=False)
+    assert "outside the sandbox" in out["server"] and out["open"].startswith("file:")
+
+
+def test_the_gpu_server_fallback_is_reported(monkeypatch):
+    from ccp import gpu_bridge
+    def unavailable(script, request):
+        raise gpu_bridge.ServerUnavailable("the GPU server did not start")
+    monkeypatch.setattr(gpu_bridge, "require_ccai", lambda what: None)
+    monkeypatch.setattr(gpu_bridge, "_served", unavailable)
+    monkeypatch.setattr(gpu_bridge, "_one_shot", lambda script, request, timeout=None: {"items": []})
+    monkeypatch.setattr(gpu_bridge, "NOTES", [])
+    assert gpu_bridge.run("listen", {}) == {"items": []}
+    assert "outside the sandbox" in gpu_bridge.NOTES[0]

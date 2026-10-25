@@ -14,10 +14,12 @@ skipped.
 Selection:
   * with --decisions (exported from report.html): exactly the accepted flags, using the text
     the reviewer left in the box (structural flags are applied as proposed);
-  * otherwise: flags graded `fix` (and `suggest` too with --include-suggest). Never particle
-    flags (their measured precision is poor), and never structural flags unless --structure is
-    given: re-timing and splitting need the user's go-ahead. --include names flags to apply
-    regardless.
+  * otherwise: flags graded `fix` (and `suggest` too with --include-suggest). A particle flag
+    only as a fix that carries the standards' meaning and an independent signal
+    (flags.particle_fix_problems: the rule every particle fix is recorded under now); older
+    particle records, made when their precision was poor, never. Never structural flags unless
+    --structure is given: re-timing and splitting need the user's go-ahead. --include names
+    flags to apply regardless.
 """
 from __future__ import annotations
 
@@ -46,7 +48,9 @@ def select(episode_id: str, decisions: Path | None, include_suggest: bool,
     """[{flag, kind: text|structure|revert, text, expect}]: *expect* is the cue text the edit
     must find (the draft, or for an already-applied flag the text it applied). *only*: exactly
     these open flags (ccp clean)."""
+    from . import rounds
     flags = {f["id"]: f for f in flagstore.load(episode_id)}
+    this_round = rounds.current(episode_id)
     chosen: list[dict] = []
 
     def pick(f, kind, text, expect):
@@ -63,7 +67,7 @@ def select(episode_id: str, decisions: Path | None, include_suggest: bool,
         data = json.loads(Path(decisions).read_text(encoding="utf-8"))
         for d in data.get("decisions", []):
             f = flags.get(int(d["flag"]))
-            if f is None:
+            if f is None or f["round"] != this_round:     # an earlier round's, already acted on
                 continue
             already = f["status"] == "applied"
             # The reviewer's verdict, kept for the pass statistics: they agreed, reworded the
@@ -99,6 +103,7 @@ def select(episode_id: str, decisions: Path | None, include_suggest: bool,
         flagstore.save(episode_id, sorted(flags.values(), key=lambda f: (f["cue"], f["id"])))
         return chosen
     grades = ("fix", "suggest") if include_suggest else ("fix",)
+    ep = episode.load(episode_id)
     for f in flags.values():
         if f["status"] in ("rejected", "applied", "kept"):
             continue
@@ -108,7 +113,9 @@ def select(episode_id: str, decisions: Path | None, include_suggest: bool,
             if has_fix:
                 pick(f, kind, f.get("proposed"), f["draft"])
             continue
-        if (not has_fix or f["category"] == "particle" or f["grade"] not in grades
+        particle_ok = (f["category"] != "particle"
+                       or (f["grade"] == "fix" and not flagstore.particle_fix_problems(ep, f)))
+        if (not has_fix or not particle_ok or f["grade"] not in grades
                 or (kind == "structure" and not structure)):
             continue
         pick(f, kind, f.get("proposed"), f["draft"])

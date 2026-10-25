@@ -34,7 +34,8 @@ reference and a knowledge of Cantonese catches most of them from the text alone.
    is, run `ccp copy-draft` now.
 2. **Reference.** `ccp reference <id>`: with a reference this pass fixes far more. Note its
    `label`.
-3. **Glossary.** Read `glossaries/<show_slug>.md` if there is one. At the end you add to it
+3. **Glossary.** `ccp status <id>` shows `glossary` (`path`, `exists`); read it with your
+   file-reading tool if it exists, without checking for it in the shell. At the end you add to it
    (`proofread-subtitles` step 8): take the names from the reference and your fixes, never
    from the machine draft's own spellings.
 4. **Mechanical fixes.** `ccp clean <id> --lint --dry-run` lists the spelling-variant, glossary
@@ -93,7 +94,9 @@ These are **standard particles, not variants or typos**; never "normalise" them:
 - 𠿪 gaa2, 𠺢 gaa1 (in 𠺢嘛), 𠺝 gaak3, 𡁜 wo5, 𡅅 aak3, 𠻺 aa6 and 𠻹 tim1 are distinct particles too
   (`cantocaptions-standards` → `references/conventions.md`).
 
-If a particle looks wrong for the line's meaning, record a query (`N|?|particle: ...`). If a
+If a particle looks wrong for the line's meaning, record a query (`N|?|particle: ...`). A
+particle review is a separate pass, only when the user asks for one: `review-particles`, after
+the cleanup. If a
 particle character was really a misheard word (爛嘅 for 爛gag), the edit may replace it with the
 word; the tool applies it and lists it in `particles_read_as_words` for you to check.
 

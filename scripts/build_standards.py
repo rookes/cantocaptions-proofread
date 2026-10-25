@@ -10,6 +10,11 @@ Sources (paths from config/paths.toml):
       -> references/style-guide.md   (formatting, timing, punctuation, untranscribed speech)
   * CantoCaptions     Optional Characters.md
       -> references/optional-characters.md
+  * CantoCaptions     standards/particle-usage.md (the standards pages; on the
+                      `standards-pages` branch until they are merged)
+      -> references/particle-usage.md (how the problem particles are used, near pairs,
+                                      set phrases; read by `ccp particles explain`)
+      Kept as it is when the checkout has no standards/ folder.
 
 The files are copied under a provenance header, with their tables flattened to one line per
 row (compact_tables), so the skill never drifts from
@@ -18,6 +23,7 @@ source and re-run.
 """
 from __future__ import annotations
 
+import re
 import sys
 from datetime import date
 from pathlib import Path
@@ -84,31 +90,53 @@ def section(text: str, heading: str) -> str:
     return "\n".join(lines[start:end]).strip() + "\n"
 
 
+def page_body(text: str) -> str:
+    """A standards page without its front matter and reviewer comments."""
+    text = re.sub(r"\A---\n.*?\n---\n", "", text.replace("\r\n", "\n"), flags=re.S)
+    return re.sub(r"<!--.*?-->\n?", "", text, flags=re.S).strip() + "\n"
+
+
+def write(dst: Path, head: str, body: str) -> None:
+    """Write *head* + *body* to *dst*, unless *dst* already holds that body (under any
+    generated header): an unchanged source then leaves the file, and git, untouched."""
+    if dst.exists():
+        old = dst.read_text(encoding="utf-8").replace("\r\n", "\n")
+        old = old[len(head):] if old.startswith(head) else re.sub(r"\A<!-- GENERATED .*?-->\n\n", "", old, flags=re.S)
+        if old == body.replace("\r\n", "\n"):
+            print(f"{dst.relative_to(ROOT)}  unchanged")
+            return
+    dst.write_text(head + body, encoding="utf-8")
+    print(f"{dst.relative_to(ROOT)}  {dst.stat().st_size} bytes")
+
+
+def write_page(src: Path, what: str) -> None:
+    write(OUT / src.name, header(src, what), compact_tables(page_body(src.read_text(encoding="utf-8"))))
+
+
 def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
     OUT.mkdir(parents=True, exist_ok=True)
+    usage = paths.get("cantocaptions") / "standards" / "particle-usage.md"
+    if usage.is_file():
+        write_page(usage, "How the problem particles are used, near pairs and set phrases")
+    else:
+        print(f"{usage} not found (standards/ is on the standards-pages branch): kept the bundled copy")
     conv = paths.get("cantocaptions_ai") / "cantocaptions_ai" / "languages" / "yue" / "proofread" / "cantocaptions.md"
-    (OUT / "conventions.md").write_text(
-        header(conv, "The CantoCaptions character conventions, with particle meanings")
-        + compact_tables(conv.read_text(encoding="utf-8")), encoding="utf-8")
+    write(OUT / "conventions.md", header(conv, "The CantoCaptions character conventions, with particle meanings"),
+          compact_tables(conv.read_text(encoding="utf-8")))
     readme = paths.get("cantocaptions") / "README.md"
-    (OUT / "style-guide.md").write_text(
-        header(readme, "The 'Subtitle Style Guide' section of the CantoCaptions README")
-        + compact_tables(section(readme.read_text(encoding="utf-8"), "## Subtitle Style Guide")), encoding="utf-8")
+    write(OUT / "style-guide.md", header(readme, "The 'Subtitle Style Guide' section of the CantoCaptions README"),
+          compact_tables(section(readme.read_text(encoding="utf-8"), "## Subtitle Style Guide")))
     opt = paths.get("cantocaptions") / "Optional Characters.md"
-    (OUT / "optional-characters.md").write_text(
-        header(opt, "Recommended (not mandatory) CantoCaptions conventions")
-        + compact_tables(opt.read_text(encoding="utf-8")), encoding="utf-8")
-    for p in sorted(OUT.glob("*.md")):
-        print(f"{p.relative_to(ROOT)}  {p.stat().st_size} bytes")
+    write(OUT / "optional-characters.md", header(opt, "Recommended (not mandatory) CantoCaptions conventions"),
+          compact_tables(opt.read_text(encoding="utf-8")))
     # The dataset's variant rules, bundled for machines without the dataset (ccp lint).
     std = paths.get("dataset") / "rules" / "standardization.toml"
     if std.is_file():
-        snap = ROOT / "config" / "standardization.snapshot.toml"
-        snap.write_text("# SNAPSHOT of cantocaptions-dataset/rules/standardization.toml, used by ccp lint when the\n"
-                        "# dataset is not on this machine. Refreshed by scripts/build_standards.py; do not edit here.\n\n"
-                        + std.read_text(encoding="utf-8"), encoding="utf-8")
-        print(f"{snap.relative_to(ROOT)}  {snap.stat().st_size} bytes")
+        write(ROOT / "config" / "standardization.snapshot.toml",
+              "# SNAPSHOT of cantocaptions-dataset/rules/standardization.toml, used by ccp lint when the\n"
+              "# dataset is not on this machine. Refreshed by scripts/build_standards.py; do not edit here.\n\n",
+              std.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
