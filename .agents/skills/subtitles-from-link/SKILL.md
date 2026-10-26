@@ -43,7 +43,7 @@ can review.
    quality: realign the cleaned draft and proofread it with audio evidence, as described in
    `clean-draft` → "Full pass". Then apply with `uv run ccp apply <id> --include-suggest`: the
    draft is a workspace copy and the original ASR is kept, so this is safe without asking.
-   Queries and particle records stay for the user to judge; retimes and splits only if asked.
+   Queries and particle records stay for the user to judge.
 5. **Report and export.** `uv run ccp report <id>`, then `uv run ccp export <id>`. Give the user:
    - the path of the final subtitles (`<title>.yue.srt`);
    - the folder, which also holds `<title>.asr.yue.srt` (the original ASR),

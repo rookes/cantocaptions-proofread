@@ -78,7 +78,7 @@ def test_timing_split_follows_the_audio(workspace):
     assert s["onset_gaps_s"][0] == pytest.approx((33 - 18) / 25, abs=0.01)
     assert timing.load_saved(workspace["id"], 2)["proposed_cues"] == s["proposed_cues"]
     f = flags.add(workspace["id"], 2, "segmentation", "suggest", None, [], "two sentences across a pause", (), (), False,
-                  flags.saved_timing(workspace["id"], 2))
+                  timing.load_saved(workspace["id"], 2)["proposed_cues"])
     assert len(f["proposed_cues"]) == 2
     with pytest.raises(SystemExit):
         timing.suggest(workspace["id"], 2, split="阿媽|食多都亂瞓")   # does not spell the cue

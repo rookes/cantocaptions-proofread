@@ -17,6 +17,8 @@ finds cue 37), followed by whatever evidence exists for it:
 - `! hard to hear: 多 都`: characters the aligner barely matches to the audio where the draft puts them (shown only beside a recogniser that differs)
 - `L kind found→suggestion`: a lint hit (`L invisible U+200B …`: an invisible character; propose the cue's text as shown to remove it)
 - `T …`: realign doubts this cue's timing
+- `S …`: how the cue is cut may be a problem: `short` (fragments under 0.75 s in a row), `long` (over 2.5 s with a break inside), `cut inside a word` (the word runs on into the next cue), `layout` (lines and speaker dashes). A place to look, not a fault: hand-made files have many long cues that are fine
+- `+R#57 你去哪裏？  @3:24.0–3:25.5  (no cue here: a missing line?)`: a reference line no cue covers, after the cue it follows; `(on-screen text)` when it is in brackets. Most are a mistimed reference line a neighbour already says, a song or a sign; `ccp missing <id>` lists them all
 - `F#3 fix/mishearing/open → …`: a record you already made
 - `--` / `==`: a pause of 1–3 s / 3 s or more before the next cue
 - `>> speaker change`: (with `--diarize`) the speaker changes
@@ -24,8 +26,8 @@ finds cue 37), followed by whatever evidence exists for it:
 No `≠` line means the recognisers say the same words as the draft. Differences in sentence-final
 particles, punctuation and a recogniser's spelling variants (說 for 説, 喐 for 郁) are hidden
 (the draft's own spelling is checked by the `L` lines), and for stock Qwen
-also 噉/咁, 邊/便 and 着/著, which it does not distinguish. `--only lint` (or `asr`, `weak`, `timing`, comma-separated) prints only the cues with that
-kind of line: every `L`, `≠`, `!` or `T` cue in the file at once. `--groups` adds the raw ASR text of
+also 噉/咁, 邊/便 and 着/著, which it does not distinguish. `--only lint` (or `asr`, `weak`, `timing`, `seg`, `missing`, comma-separated) prints only the cues with that
+kind of line: every `L`, `≠`, `!`, `T`, `S` or `+R` line in the file at once. `--groups` adds the raw ASR text of
 each group of cues (`G12 ft …`), for when a per-cue ASR line looks cut oddly at a boundary.
 
 ## `ccp cue`

@@ -61,8 +61,12 @@ def cmd_status(a):
         "episode": ep, "workspace": str(w),
         "machine_draft": machine,
         **({"cleanup": (f"done: {done['edits']} edits applied, {done['queries']} queries ({done['at']})" if done else
-                        "not cleaned yet: start with the text-only cleanup pass (skill clean-draft), no evidence needed")}
+                        "not cleaned yet: start with the cleanup pass (skill clean-draft), no evidence needed")}
            if machine or done else {}),
+        **({"segmentation": (f"done: {ep['segmentation']['regroups']} regroups ({ep['segmentation']['at']})"
+                             + ("; realigned since" if (ep.get("draft_origin") or {}).get("segmentation")
+                                == ep["segmentation"] else "; not realigned yet"))}
+           if ep.get("segmentation") else {}),
         "reference": json.loads(ref.read_text(encoding="utf-8")) if ref.exists() else None,
         "evidence": (w / "evidence.jsonl").exists(),
         "particle_scores": (w / "particle_model.jsonl").exists(),
@@ -558,6 +562,9 @@ def _file_item(it, srt, default_pad: float) -> dict:
 
 def _span_items(a, ep, srt) -> tuple[list[dict], list[dict]]:
     """(items to run, items refused with their error)."""
+    if getattr(a, "missing", None):
+        from . import missing
+        return [it for n in a.missing for it in missing.listen_items(a.id, n)], []
     if a.json_file:
         raw = read_json_items(a.json_file)
     elif a.cue:
@@ -565,7 +572,7 @@ def _span_items(a, ep, srt) -> tuple[list[dict], list[dict]]:
     elif a.start is not None and a.end is not None:
         raw = [{"start": a.start, "end": a.end}]
     else:
-        raise SystemExit("give --cue N, --start/--end, or --json-file FILE")
+        raise SystemExit("give --cue N, --missing N, --start/--end, or --json-file FILE")
     items = [_file_item(it, srt, a.default_pad) for it in raw]
     return [i for i in items if "error" not in i], [i for i in items if "error" in i]
 
@@ -585,10 +592,15 @@ def cmd_listen(a):
         if src.get("cue"):
             draft = srt.cue(src["cue"]).text
             it["draft"] = draft
+        if src.get("ref"):
+            it["reference"] = src["ref"]
         for tag, text in list(it["asr"].items()):
             it["asr"][tag] = {"text": text, "jyutping": jyutping.romanize(text)}
             if src.get("cue"):
                 it["asr"][tag]["same_content_as_draft"] = content_key(text, tag) == content_key(it["draft"], tag)
+    if getattr(a, "missing", None):
+        from . import missing
+        return _out(missing.heard(a.id, items, res))
     res["items"].extend(refused)
     res["note"] = ("A padded span includes neighbouring speech; compare only the part that "
                    "corresponds to the cue.")
@@ -693,11 +705,6 @@ def cmd_export(a):
     _out(_prune_hint(export.export(a.id, a.to, a.name), a.id))
 
 
-def cmd_timing(a):
-    from . import timing
-    _out(timing.suggest(a.id, a.cue, a.split, a.retime))
-
-
 def cmd_pipeline(a):
     from . import pipeline
     if a.action == "runs":
@@ -734,12 +741,17 @@ def cmd_flag(a):
     if a.action == "add":
         if a.json_file:
             return _out([flags.fmt(f) for f in flags.add_many(a.id, read_json_items(a.json_file))])
+        if a.missing is not None:
+            from . import missing
+            if a.grade is None or not a.reason:
+                raise SystemExit("give --grade and --reason (and --proposed for fix or suggest)")
+            return _out(flags.fmt(missing.record(a.id, a.missing, a.grade, a.proposed, a.reason,
+                                                 a.evidence or [], a.alt or [], a.category or "missing")))
         need = [k for k in ("cue", "category", "grade", "reason") if getattr(a, k) is None]
         if need:
             raise SystemExit(f"missing --{', --'.join(need)}")
-        pc = flags.saved_timing(a.id, a.cue) if a.timing else None
         f = flags.add(a.id, a.cue, a.category, a.grade, a.proposed, a.evidence or [], a.reason,
-                      a.related or [], a.alt or [], a.replace, pc)
+                      a.related or [], a.alt or [], a.replace)
         return _out(flags.fmt(f))
     if a.action == "keep":
         if a.cue is None or not a.reason:
@@ -748,13 +760,8 @@ def cmd_flag(a):
     if a.action == "update":
         if a.flag_id is None:
             raise SystemExit("give the flag id: ccp flag update ID FLAG_ID ...")
-        pc = None
-        if a.timing:
-            cue = next(f["cue"] for f in flags.load(a.id) if f["id"] == a.flag_id)
-            pc = flags.saved_timing(a.id, cue)
         f = flags.update(a.id, a.flag_id, category=a.category, grade=a.grade, proposed=a.proposed,
-                         evidence=a.evidence, reason=a.reason, status=a.status, alternatives=a.alt,
-                         proposed_cues=pc)
+                         evidence=a.evidence, reason=a.reason, status=a.status, alternatives=a.alt)
         return _out(flags.fmt(f))
     rows = flags.load(a.id) if a.all else flags.in_round(a.id)
     if a.grade:
@@ -862,6 +869,21 @@ def cmd_clean(a):
     _out(clean.clean(a.id, clean.parse(lines), a.lint, a.skip_lint or [], a.dry_run, a.no_apply))
 
 
+def cmd_segment(a):
+    from . import segment
+    lines = list(a.edit or [])
+    if a.edits:
+        lines += Path(a.edits).read_text(encoding="utf-8-sig").splitlines()
+    if not lines:
+        raise SystemExit("give regroups (N-M|cue // cue|reason) as arguments or with --edits FILE")
+    _out(segment.segment(a.id, segment.parse(lines), a.dry_run))
+
+
+def cmd_missing(a):
+    from . import missing
+    _out(missing.listing(a.id))
+
+
 def cmd_prune(a):
     from . import prune
     if a.finished:
@@ -939,7 +961,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--save", action="store_true",
                    help="write the stream (all cues unless --from/--to) to work/<id>/review.txt instead of printing it")
     s.add_argument("--only", metavar="KINDS",
-                   help="just the cues with these tool hints: lint, asr, weak, timing (e.g. --only lint)")
+                   help="just the cues with these tool hints: lint, asr, weak, timing, seg, missing (e.g. --only lint)")
     s.add_argument("--no-times", action="store_true"); s.set_defaults(fn=cmd_render)
 
     s = sub.add_parser("cue", help="everything known about one or more cues")
@@ -1024,16 +1046,13 @@ def build_parser() -> argparse.ArgumentParser:
         s.add_argument("--batch", dest="json_file", help=argparse.SUPPRESS)
         if name == "listen":
             s.add_argument("--models", default="ft,qw"); s.add_argument("--isolate", action="store_true")
+            s.add_argument("--missing", type=int, action="append", metavar="N",
+                           help="reference line N that no cue covers (+R#N): its span heard four ways (close, "
+                                "voices isolated, wider, with the reference as a hint), kept between its neighbours")
         else:
             s.add_argument("candidates", nargs="*")
             s.add_argument("--json", action="store_true", help="full JSON instead of compact text")
         s.set_defaults(fn=fn)
-
-    s = sub.add_parser("timing", help="propose a retime or a split for a cue from the stored audio alignment")
-    s.add_argument("id"); s.add_argument("cue", type=int)
-    s.add_argument("--split", help="the cue's text cut into pieces with |, e.g. '走喇|你唔好再嚟'")
-    s.add_argument("--retime", action="store_true", help="with --split: also move the outer edges to the speech")
-    s.set_defaults(fn=cmd_timing)
 
     s = sub.add_parser("pipeline", help="(GPU) run cantocaptions-ai: realign or transcribe into a new working draft",
                        epilog="Extra cantocaptions flags go after a bare --, e.g. "
@@ -1077,8 +1096,9 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--alt", action="append", help="alternative full texts (for a query)")
     s.add_argument("--related", type=int, action="append")
     s.add_argument("--status", choices=STATUSES); s.add_argument("--replace", action="store_true")
-    s.add_argument("--timing", action="store_true",
-                   help="attach the retime/split that `ccp timing` saved for this cue")
+    s.add_argument("--missing", type=int, metavar="N",
+                   help="add: the line reference line N (+R#N, `ccp missing`) says the draft lacks; "
+                        "it goes in after the cue before it")
     s.add_argument("--json-file", help="add: a JSON object or list of flags")
     s.add_argument("--json", action="store_true", help="list: raw JSON")
     s.add_argument("--all", action="store_true", help="list: every review round, not only the current one")
@@ -1095,6 +1115,16 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--dry-run", action="store_true", help="show the planned edits, change nothing")
     s.add_argument("--no-apply", action="store_true", help="record the flags but do not edit the draft")
     s.set_defaults(fn=cmd_clean)
+
+    s = sub.add_parser("segment", help="cleanup pass: re-cut cues before the realign, join quick exchanges after it")
+    s.add_argument("id")
+    s.add_argument("edit", nargs="*", help="'N-M|new cue // new cue|reason' (N alone for one cue)")
+    s.add_argument("--edits", help="a UTF-8 file with one regroup per line, same format")
+    s.add_argument("--dry-run", action="store_true", help="show the planned cues, change nothing")
+    s.set_defaults(fn=cmd_segment)
+
+    s = sub.add_parser("missing", help="reference lines no cue covers: where the draft may be missing a line")
+    s.add_argument("id"); s.set_defaults(fn=cmd_missing)
 
     s = sub.add_parser("report", help="HTML review page with clips, opened in the browser from a local server")
     s.add_argument("id", nargs="?"); s.add_argument("--video", action="store_true")
@@ -1173,7 +1203,7 @@ def main(argv=None) -> None:
 
 
 # Commands that show the agent cues, or change them: the signals are recorded before each.
-SNAPSHOT_FIRST = {"render", "cue", "clean", "flag", "report", "particles"}
+SNAPSHOT_FIRST = {"render", "cue", "clean", "segment", "missing", "flag", "report", "particles"}
 
 
 def _workspace_of(args) -> str | None:

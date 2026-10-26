@@ -59,7 +59,11 @@ def select(episode_id: str, decisions: Path | None, include_suggest: bool,
     if only is not None:
         for i in only:
             f = flags.get(i)
-            if f and f["status"] not in ("rejected", "applied") and f.get("proposed") is not None:
+            if f and f["status"] not in ("rejected", "applied") and f.get("remove"):
+                pick(f, "delete", None, f["draft"])
+            elif f and f["status"] not in ("rejected", "applied") and f.get("proposed_cues"):
+                pick(f, "structure", None, f["draft"])
+            elif f and f["status"] not in ("rejected", "applied") and f.get("proposed") is not None:
                 pick(f, "text", f["proposed"], f["draft"])
         return chosen
 
@@ -82,11 +86,20 @@ def select(episode_id: str, decisions: Path | None, include_suggest: bool,
             else:
                 f["review"] = "accepted"
             if d["decision"] == "rejected":
-                if already and not f.get("proposed_cues"):
+                if already and f.get("remove"):
+                    # A line the cleanup took out: put it back where it was.
+                    pick(f, "undelete", None, None)
+                elif already and f.get("insert"):
+                    # An inserted line the reviewer does not want: take it out again.
+                    pick(f, "remove", None, f.get("applied_text"))
+                elif already and not f.get("proposed_cues"):
                     # The reviewer rejects a correction the agent already applied: undo it.
                     pick(f, "revert", f["draft"], f.get("applied_text"))
-                else:
+                elif not already:
                     f["status"] = "rejected"
+                else:
+                    # An applied regrouping stays: the realign after it timed every cue anew.
+                    pick(f, "keep_regroup", None, None)
                 continue
             if f.get("proposed_cues"):
                 if not already:
@@ -107,8 +120,8 @@ def select(episode_id: str, decisions: Path | None, include_suggest: bool,
     for f in flags.values():
         if f["status"] in ("rejected", "applied", "kept"):
             continue
-        has_fix = f.get("proposed") is not None or bool(f.get("proposed_cues"))
-        kind = "structure" if f.get("proposed_cues") else "text"
+        has_fix = f.get("proposed") is not None or bool(f.get("proposed_cues")) or bool(f.get("remove"))
+        kind = "delete" if f.get("remove") else "structure" if f.get("proposed_cues") else "text"
         if f["id"] in include:
             if has_fix:
                 pick(f, kind, f.get("proposed"), f["draft"])
@@ -132,12 +145,66 @@ def apply(episode_id: str, decisions: Path | None = None, include_suggest: bool 
     chosen = select(episode_id, decisions, include_suggest, list(include), structure, only)
     before_lint = _lint(path)
     applied, skipped = [], []
-    shifts: list[tuple[int, int]] = []          # (cue position, cues added after it)
-    # Last cue first, so a split never moves a cue that is still to be edited.
-    reverted = []
-    for item in sorted(chosen, key=lambda x: -x["flag"]["cue"]):
+    # (position, change): every flag on a cue after that position moves by the change (cues
+    # added by a split or an insert, taken away by a merge or a removed line).
+    shifts: list[tuple[int, int, int]] = []   # (position, change, flag id)
+    inserted: dict[int, int] = {}               # flag id -> position of its new cue
+    # Last cue first, so a split never moves a cue that is still to be edited (an insert sits
+    # between its cue and the next).
+    reverted, removed, restored = [], [], []
+    not_undone = [{"flag": x["flag"]["id"], "cue": x["flag"]["cue"]} for x in chosen if x["kind"] == "keep_regroup"]
+    chosen = [x for x in chosen if x["kind"] != "keep_regroup"]
+    for item in sorted(chosen, key=lambda x: -(x["flag"]["cue"] + (0.5 if x["flag"].get("insert") else 0))):
         f, kind, text = item["flag"], item["kind"], item["text"]
+        if kind == "structure" and f.get("insert"):
+            if f["cue"] > len(srt.cues):
+                skipped.append({"flag": f["id"], "cue": f["cue"], "reason": "the cue it follows is gone"})
+                continue
+            new = [(c["start"], c["end"], c["text"]) for c in f["proposed_cues"]]
+            srt.insert_after(f["cue"], new)
+            shifts.append((f["cue"], len(new), f["id"]))
+            inserted[f["id"]] = f["cue"] + 1
+            applied.append({"flag": f["id"], "cue": f["cue"], "from": "(no line)",
+                            "to": [f"{c['start']:.3f}-{c['end']:.3f} {c['text']}" for c in f["proposed_cues"]]})
+            continue
+        if kind == "undelete":
+            srt.insert_after(f["cue"], [(f["start"], f["end"], f["draft"])])
+            shifts.append((f["cue"], 1, f["id"]))
+            restored.append({"flag": f["id"], "cue": f["cue"] + 1, "text": f["draft"]})
+            continue
         cue = srt.cue(f["cue"])
+        if kind == "delete":
+            if cue.text != item["expect"]:
+                skipped.append({"flag": f["id"], "cue": f["cue"], "reason": "cue changed since the flag was made"})
+                continue
+            srt.delete_cue(f["cue"])
+            shifts.append((f["cue"], -1, f["id"]))
+            applied.append({"flag": f["id"], "cue": f["cue"], "from": cue.text, "to": "(removed)"})
+            continue
+        if kind == "remove":
+            if cue.text != item["expect"]:
+                skipped.append({"flag": f["id"], "cue": f["cue"], "reason": "the inserted line changed since"})
+                continue
+            srt.delete_cue(f["cue"])
+            shifts.append((f["cue"], -1, f["id"]))
+            removed.append({"flag": f["id"], "cue": f["cue"], "text": cue.text})
+            continue
+        if f.get("span") and kind == "structure":
+            first, last = f["span"]
+            now = [{"start": c.start, "end": c.end, "text": c.text} for c in srt.cues[first - 1:last]]
+            same = len(now) == len(f["draft_cues"]) and all(
+                a["text"] == b["text"] and abs(a["start"] - b["start"]) <= 0.002 and abs(a["end"] - b["end"]) <= 0.002
+                for a, b in zip(now, f["draft_cues"]))
+            if not same:
+                skipped.append({"flag": f["id"], "cue": f["cue"], "reason": "cues changed since the flag was made"})
+                continue
+            new = [(c["start"], c["end"], c["text"]) for c in f["proposed_cues"]]
+            srt.replace_cues(first, last, new)
+            if len(new) != last - first + 1:
+                shifts.append((last, len(new) - (last - first + 1), f["id"]))
+            applied.append({"flag": f["id"], "cue": f["cue"], "from": f["draft"],
+                            "to": [f"{c['start']:.3f}-{c['end']:.3f} {c['text']}" for c in f["proposed_cues"]]})
+            continue
         unchanged = cue.text == item["expect"]
         if kind != "revert" and f["status"] != "applied":
             unchanged = unchanged and abs(cue.start - f["start"]) <= 0.002 and abs(cue.end - f["end"]) <= 0.002
@@ -148,7 +215,7 @@ def apply(episode_id: str, decisions: Path | None = None, include_suggest: bool 
             new = [(c["start"], c["end"], c["text"]) for c in f["proposed_cues"]]
             srt.replace_cue(f["cue"], new)
             if len(new) > 1:
-                shifts.append((f["cue"], len(new) - 1))
+                shifts.append((f["cue"], len(new) - 1, f["id"]))
             applied.append({"flag": f["id"], "cue": f["cue"], "from": f["draft"],
                             "to": [f"{c['start']:.3f}-{c['end']:.3f} {c['text']}" for c in f["proposed_cues"]]})
         else:
@@ -172,7 +239,15 @@ def apply(episode_id: str, decisions: Path | None = None, include_suggest: bool 
     result = {"file": str(path), "edited": target, "applied": applied, "skipped": skipped, "dry_run": dry_run}
     if reverted:
         result["reverted"] = reverted
-    if dry_run or not (applied or reverted):
+    if removed:
+        result["removed"] = removed
+    if restored:
+        result["restored"] = restored
+    if not_undone:
+        result["not_undone"] = {"regroups": not_undone,
+                                "why": "a re-cut that the realign has since timed cannot be undone on its own; "
+                                       "tell the reviewer, and re-cut those cues again with `ccp segment` if they want"}
+    if dry_run or not (applied or reverted or removed or restored):
         return result
     if shifts:
         srt.renumber("ms" if style == "ms" else "sequential")
@@ -184,7 +259,7 @@ def apply(episode_id: str, decisions: Path | None = None, include_suggest: bool 
         result["new_lint_warnings"] = new
     all_flags = flagstore.load(episode_id)
     done = {a["flag"]: a["to"] for a in applied}
-    undone = {r["flag"] for r in reverted}
+    undone = {r["flag"] for r in reverted} | {r["flag"] for r in removed} | {r["flag"] for r in restored}
     for fl in all_flags:
         if fl["id"] in done:
             fl["status"] = "applied"
@@ -193,8 +268,29 @@ def apply(episode_id: str, decisions: Path | None = None, include_suggest: bool 
             fl["status"] = "rejected"
             fl.pop("applied_text", None)
             fl["reverted"] = True
-        # Flags on later cues move down by the cues a split inserted before them.
-        fl["cue"] += sum(n for c, n in shifts if fl["cue"] > c)
+        def moved(base: int) -> int:
+            return sum(n for c, n, fid in shifts if base > c and fid != fl["id"])
+        if fl["id"] in inserted:
+            # From now on the record points at the line it added (a removal looks for it there).
+            fl["applied_text"] = fl["proposed_cues"][0]["text"]
+            fl["cue"] = inserted[fl["id"]] + moved(inserted[fl["id"]])
+            continue
+        if fl.get("remove") and fl["id"] in done:
+            fl["cue"] = fl["cue"] - 1 + moved(fl["cue"])     # it now marks the cue the line followed
+            continue
+        if fl.get("remove") and fl["id"] in undone:
+            fl["cue"] = fl["cue"] + 1 + moved(fl["cue"] + 1)  # the restored line
+            continue
+        if fl.get("insert") and fl["id"] in undone:
+            fl["cue"] = fl["cue"] - 1 + moved(fl["cue"])     # back to the cue it followed
+            continue
+        # Flags on later cues move by the cues added or taken away before them.
+        delta = moved(fl["cue"])
+        fl["cue"] += delta
+        if fl.get("span") and fl["id"] in done:
+            fl["span"] = [fl["cue"], fl["cue"] + len(fl["proposed_cues"]) - 1]
+        elif fl.get("span") and delta:
+            fl["span"] = [x + delta for x in fl["span"]]
     flagstore.save(episode_id, all_flags)
     if episode.draft_is_source(ep):
         try:

@@ -67,7 +67,7 @@ Only when the user asked for edits:
    `--include-suggest` adds the `suggest` records (only if the user asked for everything you
    are fairly sure of). Queries, keeps and particle records are never applied this way.
    `--include <flag_id>` adds one record. `--dry-run` previews.
-3. Retimes and splits: only from decisions, or with `--structure` when the user asked.
+3. Added and removed lines from a cleanup: applied at once there; the reviewer can undo them.
 
 `ccp apply` changes only the text lines of the affected cues (timings, numbering, BOM and line
 endings stay byte-identical) and skips any record whose cue changed since it was made. For a

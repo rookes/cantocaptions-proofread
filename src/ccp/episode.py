@@ -129,6 +129,20 @@ def machine_draft(ep: dict) -> bool:
     return bool(ep.get("ai_generated") or origin.get("kind") == "transcribe" or origin.get("machine"))
 
 
+def cleanup_pass(ep: dict) -> bool:
+    """Is this workspace in the cleanup pass (skill clean-draft)? A machine-made draft always
+    is; a hand-made messy file is once `ccp clean` has run on it. In the cleanup, re-cuts,
+    removed lines and missing lines go into the draft at once and the realign that follows
+    times them; in a normal proofread nothing structural changes."""
+    origin = ep.get("draft_origin") or {}
+    return machine_draft(ep) or bool(ep.get("cleanup") or origin.get("cleanup"))
+
+
+def realigned(ep: dict) -> bool:
+    """Has the current draft come out of a realign (the cleanup's step after re-cutting)?"""
+    return (ep.get("draft_origin") or {}).get("kind") == "realign"
+
+
 def set_draft(ep: dict, new_srt: Path, origin: dict) -> dict:
     """Make *new_srt* the working draft (copied to work/<id>/draft.srt). Everything computed
     on the old draft (evidence, flags, lint, report, timing notes) is moved to previous/."""

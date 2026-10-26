@@ -95,8 +95,14 @@ def check_reason(reason: str | None, proposed: str | None = None, draft: str | N
 
 
 def validate(flag: dict, n_cues: int) -> None:
-    if not isinstance(flag.get("cue"), int) or not 1 <= flag["cue"] <= n_cues:
-        raise ValueError(f"cue must be a cue position 1..{n_cues}, got {flag.get('cue')!r}")
+    lowest = 0 if ((flag.get("insert") and flag.get("status") != "applied")
+                   or (flag.get("remove") and flag.get("status") == "applied")) else 1
+    if not isinstance(flag.get("cue"), int) or not lowest <= flag["cue"] <= n_cues:
+        raise ValueError(f"cue must be a cue position {lowest}..{n_cues}, got {flag.get('cue')!r}")
+    span = flag.get("span")
+    if span is not None and flag.get("status") != "applied" and not (
+            flag["cue"] == span[0] <= span[1] <= n_cues):
+        raise ValueError(f"span must run from the flag's cue to a later cue, got {span!r}")
     for key, allowed in (("category", CATEGORIES), ("grade", GRADES), ("status", STATUSES)):
         if flag.get(key) not in allowed:
             raise ValueError(f"{key} must be one of {allowed}, got {flag.get(key)!r}")
@@ -104,7 +110,7 @@ def validate(flag: dict, n_cues: int) -> None:
     pc = flag.get("proposed_cues")
     if has_text and flag["proposed"] == flag.get("draft") and not flag.get("strip_invisible"):
         raise ValueError("proposed text is identical to the draft: record a keep instead")
-    if flag["grade"] in ("fix", "suggest") and not (has_text or pc):
+    if flag["grade"] in ("fix", "suggest") and not (has_text or pc or flag.get("remove")):
         raise ValueError(f"a {flag['grade']} needs a proposed text (or proposed cues); with no "
                          "confident text, record a query")
     if flag["grade"] in ("query", "keep") and (has_text or pc):
@@ -129,35 +135,52 @@ def validate(flag: dict, n_cues: int) -> None:
 
 def add(episode_id: str, cue: int, category: str, grade: str, proposed: str | None, evidence: list,
         reason: str, related: list[int] = (), alternatives: list[str] = (), replace: bool = False,
-        proposed_cues: list[dict] | None = None, extra: dict | None = None) -> dict:
+        proposed_cues: list[dict] | None = None, extra: dict | None = None,
+        span: tuple[int, int] | None = None, insert: dict | None = None) -> dict:
     """*proposed_cues* (a retime or a split: [{start, end, text}]) replaces the cue's timing
     and may turn it into several cues; *proposed* alone changes only its text. A cue whose
-    earlier flag was already applied (or kept) can take a new record."""
+    earlier flag was already applied (or kept) can take a new record.
+
+    *span* (first, last): the record regroups cues first..last (`ccp segment`) into
+    *proposed_cues*; *cue* is first. *insert* ({"start", "end"}: where the line is heard): a
+    line the draft lacks, to go in after cue *cue* (0: before the first)."""
     from . import rounds
     ep = episode.load(episode_id)
     srt = episode.srt(ep)
     round_no = rounds.begin(episode_id)      # before loading: a new round moves undecided records
     flags = load(episode_id)
-    existing = [f for f in flags if f["cue"] == cue and f["status"] not in ("rejected", "applied", "kept")]
+    existing = [f for f in flags if f["cue"] == cue and f["status"] not in ("rejected", "applied", "kept")
+                and bool(f.get("insert")) == bool(insert)]
     if existing and not replace:
         raise ValueError(f"cue {cue} already has flag {existing[0]['id']}; use `ccp flag update` "
                          "or pass --replace")
     if existing and replace:
         flags = [f for f in flags if f not in existing]
-    c = srt.cue(cue)
     prop = from_display(proposed) if proposed is not None else None
+    if insert is not None:
+        start, end, draft = float(insert["start"]), float(insert["end"]), ""
+    else:
+        c = srt.cue(cue)
+        start, end, draft = c.start, c.end, c.text
+    src = srt.cues[span[0] - 1:span[1]] if span else []
+    if span:
+        start, end = src[0].start, src[-1].end
+        draft = " ｜ ".join(x.text for x in src)
     flag = {
         "id": max([f["id"] for f in load(episode_id)] + [0]) + 1,
         "cue": cue, "round": round_no, "related": sorted(set(related)),
-        "start": c.start, "end": c.end,
-        "draft": c.text,
+        "start": start, "end": end,
+        "draft": draft,
+        **({"span": [span[0], span[1]],
+            "draft_cues": [{"start": x.start, "end": x.end, "text": x.text} for x in src]} if span else {}),
+        **({"insert": True} if insert is not None else {}),
         "proposed": prop,
         "alternatives": [from_display(a) for a in alternatives],
         "category": category, "grade": grade,
         # Proposing a cue's visible text when it holds invisible characters means: remove them.
         **({"strip_invisible": True, "draft_shown": spell_invisible(clean_markup(c.raw))}
-           if c.invisible and prop == c.text else {}),
-        "reason": check_reason(reason, prop, c.text),
+           if insert is None and not span and c.invisible and prop == c.text else {}),
+        "reason": check_reason(reason, prop, draft),
         "evidence": _parse_evidence(evidence),
         "status": "kept" if grade == "keep" else "open",
         **({"proposed_cues": [{"start": round(float(x["start"]), 3), "end": round(float(x["end"]), 3),
@@ -167,7 +190,14 @@ def add(episode_id: str, cue: int, category: str, grade: str, proposed: str | No
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
     }
     validate(flag, len(srt.cues))
-    _check_meaning(episode_id, srt, flag)
+    if insert is not None:
+        if not any(e["source"] == "reference" for e in flag["evidence"]):
+            raise ValueError("a missing line comes from a reference line: add --evidence \"reference: <the "
+                             "reference line and how the proposed text means the same>\"")
+        if flag["grade"] in ("fix", "suggest") and not (prop or proposed_cues):
+            raise ValueError("give the missing line's text (--proposed)")
+    else:
+        _check_meaning(episode_id, srt, flag)
     _check_particle_fix(ep, flag)
     flags.append(flag)
     flags.sort(key=lambda f: (f["cue"], f["id"]))
@@ -267,33 +297,32 @@ def update(episode_id: str, flag_id: int, **changes) -> dict:
 
 def add_many(episode_id: str, items: list[dict]) -> list[dict]:
     """Batch add from JSON objects with the same keys as `add` (cue, category, grade, proposed,
-    evidence, reason, related, alternatives, proposed_cues). "timing": true attaches the
-    suggestion `ccp timing` saved for that cue. Valid items are recorded even when others fail;
-    the error lists the failures."""
+    evidence, reason, related, alternatives); "missing": N records the line reference line N
+    says the draft lacks (missing.record; no "cue"). Times are never part of a record the agent
+    writes: re-cuts go through `ccp segment` in the cleanup, timing through the realign. Valid
+    items are recorded even when others fail; the error lists the failures."""
     done, failed = [], []
     for it in items:
         try:
-            pc = it.get("proposed_cues")
-            if it.get("timing") and not pc:
-                pc = saved_timing(episode_id, int(it["cue"]))
+            if it.get("proposed_cues") or it.get("timing"):
+                raise ValueError("records carry no times: re-cut cues with `ccp segment` in the cleanup, "
+                                 "and leave timing to the realign")
+            if it.get("missing") is not None:
+                from . import missing
+                done.append(missing.record(episode_id, int(it["missing"]), it["grade"], it.get("proposed"),
+                                           it.get("reason", ""), it.get("evidence", []), it.get("alternatives", []),
+                                           it.get("category", "missing")))
+                continue
             done.append(add(episode_id, int(it["cue"]), it.get("category", "other"), it["grade"],
                             it.get("proposed"), it.get("evidence", []), it.get("reason", ""),
                             it.get("related", []), it.get("alternatives", []),
-                            bool(it.get("replace", False)), pc))
+                            bool(it.get("replace", False))))
         except (ValueError, KeyError) as err:
             failed.append(f"cue {it.get('cue')}: {err if isinstance(err, ValueError) else f'missing {err}'}")
     if failed:
         raise ValueError(f"{len(done)} records added (cues {', '.join(str(f['cue']) for f in done) or 'none'}); "
                          f"{len(failed)} not added. Fix these and add only them again:\n" + "\n".join(failed))
     return done
-
-
-def saved_timing(episode_id: str, cue: int) -> list[dict]:
-    from . import timing
-    s = timing.load_saved(episode_id, cue)
-    if not s:
-        raise ValueError(f"no saved timing suggestion for cue {cue}; run `ccp timing {episode_id} {cue}` first")
-    return s["proposed_cues"]
 
 
 def summary(flags: list[dict]) -> dict:

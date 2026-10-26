@@ -227,25 +227,70 @@ class SrtFile:
         """Replace cue *pos* by one or more cues (a retime or a split), each (start, end, text
         with a newline or ⏎ between lines). Counters are left as they are; call renumber() after
         all structural edits. A leading override tag such as {an8} is carried to every piece."""
+        self.replace_cues(pos, pos, new_cues)
+
+    def replace_cues(self, first_pos: int, last_pos: int, new_cues: list[tuple[float, float, str]]) -> None:
+        """Replace cues *first_pos*..*last_pos* by *new_cues* (a regrouping: merged, split or
+        re-cut). The first cue's leading override tag is carried to every new cue."""
+        head, tail = self.cue(first_pos), self.cue(last_pos)
+        first = head.number_idx if head.number_idx >= 0 else head.timing_idx
+        last = tail.text_line_idx[-1] if tail.text_line_idx else tail.timing_idx
+        ending = self.lines[last][1]
+        block = self._block(new_cues, head.number or str(first_pos), self._lead(head))
+        block[-1][1] = ending
+        self.lines[first:last + 1] = block
+        self.cues = []
+        self._parse()
+
+    def insert_after(self, pos: int, new_cues: list[tuple[float, float, str]]) -> None:
+        """Insert *new_cues* after cue *pos* (0: before the first cue). Counters are left for
+        renumber()."""
+        if pos == 0:
+            head = self.cues[0] if self.cues else None
+            at = (head.number_idx if head.number_idx >= 0 else head.timing_idx) if head else len(self.lines)
+            self.lines[at:at] = self._block(new_cues, "0", None) + [["", self.newline]]
+        else:
+            cue = self.cue(pos)
+            last = cue.text_line_idx[-1] if cue.text_line_idx else cue.timing_idx
+            block = [["", self.newline]] + self._block(new_cues, cue.number or str(pos), None)
+            # The new block ends the way that cue ended (no newline at the end of a file).
+            block[-1][1] = self.lines[last][1]
+            self.lines[last][1] = self.newline
+            self.lines[last + 1:last + 1] = block
+        self.cues = []
+        self._parse()
+
+    def delete_cue(self, pos: int) -> None:
+        """Remove cue *pos* and the blank line that separated it from its neighbour."""
         cue = self.cue(pos)
         first = cue.number_idx if cue.number_idx >= 0 else cue.timing_idx
         last = cue.text_line_idx[-1] if cue.text_line_idx else cue.timing_idx
-        ending = self.lines[last][1]
-        lead = re.match(r"^(\{\\[^}]*\})+", cue.lines[0]) if cue.lines else None
+        if last + 1 < len(self.lines) and self.lines[last + 1][0].strip() == "":
+            last += 1
+        elif first > 0 and self.lines[first - 1][0].strip() == "":
+            first -= 1
+            if first > 0:                       # the last cue: its neighbour now ends the file
+                self.lines[first - 1][1] = self.lines[last][1]
+        del self.lines[first:last + 1]
+        self.cues = []
+        self._parse()
+
+    @staticmethod
+    def _lead(cue: Cue):
+        return re.match(r"^(\{\\[^}]*\})+", cue.lines[0]) if cue.lines else None
+
+    def _block(self, new_cues, number: str, lead) -> list[list[str]]:
         block: list[list[str]] = []
         for k, (start, end, text) in enumerate(new_cues):
             if k:
                 block.append(["", self.newline])
-            block.append([cue.number or str(pos), self.newline])
+            block.append([number, self.newline])
             block.append([f"{fmt_time(start)} --> {fmt_time(end)}", self.newline])
             text_lines = from_display(text).split("\n")
             if lead and not text_lines[0].startswith(lead.group(0)):
                 text_lines[0] = lead.group(0) + text_lines[0]
             block += [[ln, self.newline] for ln in text_lines]
-        block[-1][1] = ending
-        self.lines[first:last + 1] = block
-        self.cues = []
-        self._parse()
+        return block
 
     def renumber(self, style: str) -> None:
         """Rewrite every counter line: sequential, or from the start time in ms."""

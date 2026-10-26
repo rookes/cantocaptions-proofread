@@ -12,7 +12,8 @@
 - How is this name written in this show? Use AGENTS.md principle 2. Do not invent a new transliteration.
 - What do the recognisers hear with more context? Use `ccp listen ID --cue N` (`--pad 1.5`, `--isolate` for music). Do not read a padded transcript as belonging only to this cue.
 - Which of two candidates that sound different fits the audio? Was a word said at all? Use `ccp score ID --cue N "full text A" "full text B"`. Do not read a verdict as the meaning.
-- Is the cue missing a word at its edge? Use `[edge]` characters in ASR lines, `ccp render --groups`, `ccp listen --pad 1.5`. Do not move words between cues (flag it instead).
+- Is the cue missing a word at its edge? Use `[edge]` characters in ASR lines, `ccp render --groups`, `ccp listen --pad 1.5`. Do not move words between cues with a text fix: re-cut them with `ccp segment` (or flag it).
+- Is a whole line missing where the reference has one (`+R#N`)? Use `ccp listen ID --missing N`, then write the line yourself. Do not take any single hearing as the line, and do not let the hinted hearing (the reference given to the recognisers) count as confirmation.
 
 ## When to use audio
 
@@ -81,6 +82,12 @@ where it placed them. They catch about half of real character errors, at about o
 per five characters shown: a place to look, not a verdict. It is near-deaf on
 fast speech, shouting, singing and music, and barely hears particles (never shown).
 
+**Hearing a missing line (`ccp listen --missing N`).** Four hearings of a span no cue covers:
+close, close with the voices isolated, wider (into the neighbours), and with the reference as a
+hint. Measured on 105 lines machine drafts lacked: the best single hearing is right a little
+under half the time, a line the agent writes from all of them about 6 times in 10; when both recognisers'
+close hearings contain that line it is right 86 times in 100; when neither does, about 3 times in 10.
+
 **Re-listening (`ccp listen`).** Both recognisers again with wider padding (1 s by default),
 optionally after vocal isolation. It often fixes a recogniser's error at a cue boundary. The
 output covers the whole padded span: match the part that belongs to this cue.
@@ -101,7 +108,9 @@ clause's particles are never counted.
 ## Known traps
 
 - Feeding a candidate to a recogniser as context does not confirm it (it recites or ignores
-  the hint). The tools do not offer it; do not emulate it.
+  the hint). The one place the tools use a hint is a missing line (`listen --missing`), where
+  the reference helps the recognisers find words in a span no cue covers; even there it only
+  suggests words, and the grade rests on the close hearings without it.
 - Whisper models hallucinate on Cantonese and are not used.
 - A recogniser's extra leading word (`[你]`) may be the end of the previous cue.
 - Standard Written Chinese in a cue (的, 這, 沒, 們) is usually a slip, unless the speaker is

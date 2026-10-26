@@ -1,9 +1,11 @@
 """ccp listen: re-run ASR on chosen spans, optionally after vocal isolation.
 
 Request: {"media", "audio_track", "models": ["ft","qw"], "isolate": false,
-          "items": [{"key": "...", "start": s, "end": e}]}
+          "items": [{"key": "...", "start": s, "end": e[, "isolate": true][, "context": "..."]}]}
 Result: {"items": [{"key", "start", "end", "asr": {"ft": text, "qw": text}}]}
 
+An item's own "isolate" isolates just its clip; "context" is ASR context biasing text (the
+reference line of a missing line: it helps the recognisers find the words, never confirms them).
 The ASR models are loaded for the request and unloaded after it.
 """
 from __future__ import annotations
@@ -26,14 +28,18 @@ def handle(req: dict, clip_for, stage_for=None, order=None, isolator=isolate) ->
     models already loaded first, so a server swaps at most one model per request."""
     items = req["items"]
     clips = [clip_for(it["start"], it["end"]) for it in items]
-    if req.get("isolate"):
+    which = [i for i, it in enumerate(items) if req.get("isolate") or it.get("isolate")]
+    if which:
         status("isolating vocals...")
-        clips = isolator(clips)
+        for i, clip in zip(which, isolator([clips[i] for i in which])):
+            clips[i] = clip
+    contexts = [it.get("context") for it in items]
     results = [{"key": it.get("key"), "start": it["start"], "end": it["end"], "asr": {}} for it in items]
     tags = req.get("models", ["ft", "qw"])
     for tag in (order(tags) if order else tags):
         status(f"ASR {tag}...")
-        texts = asr_texts(tag, clips, stage_for(tag) if stage_for else None)
+        texts = asr_texts(tag, clips, stage_for(tag) if stage_for else None,
+                          contexts if any(contexts) else None)
         for r, text in zip(results, texts):
             r["asr"][tag] = text
     return {"items": results, "isolated": bool(req.get("isolate"))}

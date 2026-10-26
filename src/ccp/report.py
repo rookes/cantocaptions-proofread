@@ -175,7 +175,10 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
     ep = episode.load(episode_id)
     srt = episode.srt(ep)
     # Only this review round: earlier rounds were applied and have their own (archived) decisions.
-    flags = [f for f in flagstore.in_round(episode_id) if include_rejected or f["status"] != "rejected"]
+    # Re-cuts are the cleanup's own work, done and then timed by the realign: nothing for the
+    # reviewer to decide, so they stay out of the report.
+    flags = [f for f in flagstore.in_round(episode_id)
+             if (include_rejected or f["status"] != "rejected") and f.get("pass") != "segmentation"]
     flags.sort(key=lambda f: (GRADE_ORDER[f["grade"]], f["cue"]))
     work = episode.path(episode_id, "x").parent
     clips = work / "clips"
@@ -191,10 +194,10 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
         delay = audio_delay(ep["media"], ep.get("audio_track", 0))
 
         def cut(f):
-            cue = srt.cue(f["cue"])
+            start, end = _span_of(srt, f)
             name = f"flag_{f['id']}.{'mp4' if video else 'm4a'}"
-            err = _clip(ep["media"], ep.get("audio_track", 0), max(0.0, cue.start - CLIP_PAD),
-                        cue.end + CLIP_PAD, clips / name, video, delay)
+            err = _clip(ep["media"], ep.get("audio_track", 0), max(0.0, start - CLIP_PAD),
+                        end + CLIP_PAD, clips / name, video, delay)
             return f["id"], (None if err else f"clips/{name}"), err
         with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 4)) as pool:
             done = list(pool.map(cut, flags))
@@ -209,14 +212,20 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
     sig = signals.load(episode_id)
     items = []
     for f in flags:
-        cue = srt.cue(f["cue"])
+        waiting_insert = f.get("insert") and f["status"] != "applied"
+        # A line still to be added has no cue of its own yet: it is shown with the cue before it.
+        cue = srt.cue(f["cue"]) if f["cue"] else srt.cue(1)
         clip_rel = clip_of.get(f["id"])
         cleanup = f.get("pass") == "cleanup"
-        current = cue.text
+        current = cue.text if not waiting_insert else ""
         before = f.get("draft_shown") or f["draft"]       # with invisible characters spelled out
         left, right = _diff_html(before, f["proposed"]) if f.get("proposed") is not None else (html.escape(f["draft"].replace("\n", "⏎")), "")
-        prev = srt.cue(f["cue"] - 1).text if f["cue"] > 1 else None
-        nxt = srt.cue(f["cue"] + 1).text if f["cue"] < len(srt.cues) else None
+        if waiting_insert:
+            prev = srt.cue(f["cue"]).text if f["cue"] else None
+            nxt = srt.cue(f["cue"] + 1).text if f["cue"] < len(srt.cues) else None
+        else:
+            prev = srt.cue(f["cue"] - 1).text if f["cue"] > 1 else None
+            nxt = srt.cue(f["cue"] + 1).text if f["cue"] < len(srt.cues) else None
         ev = evidence.get(f["cue"], {})
         asr = {k: (v.get("edge_before", "") and f"[{v['edge_before']}]") + v.get("text", "")
                + (v.get("edge_after", "") and f"[{v['edge_after']}]") for k, v in ev.get("asr", {}).items()}
@@ -233,8 +242,13 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
                      and not (f["status"] == "applied" and f.get("proposed_cues")),
             "applied_text": f.get("applied_text") if isinstance(f.get("applied_text"), str) else None,
             "evidence": [{**e, "detail": plain(str(e.get("detail", "")))} for e in f["evidence"]],
-            "reference": refs.get(f["cue"], []), "asr": asr, "prev": prev, "next": nxt, "clip": clip_rel,
-            "cleanup": cleanup, "found_by": passstats.found_by(f, sig),
+            "reference": ([f["ref_text"]] if f.get("insert") and f.get("ref_text") else
+                          [] if waiting_insert else refs.get(f["cue"], [])),
+            "asr": {} if waiting_insert else asr, "prev": prev, "next": nxt, "clip": clip_rel,
+            "cleanup": cleanup, "found_by": [] if waiting_insert else passstats.found_by(f, sig),
+            "insert": bool(f.get("insert")), "span": bool(f.get("span")), "realigned": bool(f.get("realigned")),
+            "draft_cues": [{"at": f"{short_time(c['start'])}–{short_time(c['end'])}", "text": c["text"]}
+                           for c in f.get("draft_cues") or []],
         })
     meta = {
         "episode_id": episode_id, "title": _title(ep), "srt": ep["srt"],
@@ -249,6 +263,19 @@ def build(episode_id: str, video: bool = False, include_rejected: bool = False) 
     out = work / "report.html"
     out.write_text(page, encoding="utf-8")
     return out
+
+
+def _span_of(srt, f: dict) -> tuple[float, float]:
+    """The audio a flag's clip covers: its cue, the cues a regrouping made, or where a line
+    still to be added is heard."""
+    if f.get("insert") and f["status"] != "applied":
+        return f["start"], f["end"]
+    if f.get("span") and f["status"] == "applied":
+        first, last = f["span"]
+        last = min(last, len(srt.cues))
+        return srt.cue(first).start, srt.cue(last).end
+    cue = srt.cue(f["cue"])
+    return cue.start, cue.end
 
 
 TEMPLATE = r"""<!doctype html>
@@ -395,9 +422,14 @@ document.getElementById('top').innerHTML = `
 const cats = [...new Set(D.items.map(i => i.category))];
 const sel = document.getElementById('filter');
 cats.forEach(c => sel.insertAdjacentHTML('beforeend', `<option value="${c}">${CAT[c] || c}</option>`));
-const groups = [['fix','Fixes'],['suggest','Suggestions (you decide)'],['query','Questions (no confident fix)'],
-  ['cleanup','Cleanup pass (text only, already applied)'],['keep','Checked and kept']];
-const inGroup = (i, g) => g === 'cleanup' ? (i.cleanup && i.status === 'applied') : (i.grade === g && !(i.cleanup && i.status === 'applied'));
+const groups = [['added','Lines added from the reference (already in)'],['fix','Fixes'],['suggest','Suggestions (you decide)'],
+  ['query','Questions (no confident fix)'],['cleanup','Cleanup pass (text only, already applied)'],
+  ['regrouped','Re-cut lines (already applied)'],['keep','Checked and kept']];
+const isAdded = i => i.insert && i.status === 'applied';
+const isRegrouped = i => i.span && i.status === 'applied';
+const inGroup = (i, g) => g === 'added' ? isAdded(i) : g === 'regrouped' ? isRegrouped(i)
+  : g === 'cleanup' ? (i.cleanup && i.status === 'applied')
+  : (i.grade === g && !(i.cleanup && i.status === 'applied') && !isAdded(i) && !isRegrouped(i));
 const reason = it => it.reason ? `<div class="reason"><b>Reason:</b> ${esc(it.reason)}</div>` : '';
 const player = it => it.clip ? (D.meta.video ? `<video controls preload="none" src="${it.clip}"></video>` : `<audio controls preload="none" src="${it.clip}"></audio>`) : '';
 // Who pointed the line out: the tool signals it carried, or the agent alone.
@@ -465,7 +497,38 @@ function row(it) {
     </div>
   </div>`;
 }
+// A line the agent added where only the reference had one: Remove takes it out again.
+function addedRow(it) {
+  const d = dec[it.id] || {};
+  const ev = otherEv(it).map(e => esc(e.source === 'context' ? e.detail : `${SRC[e.source] || e.source}: ${e.detail}`)).join(' · ');
+  return `<div class="card row ${d.decision || ''}" data-id="${it.id}" data-cat="${it.category}">
+    ${head(it, `<span class="badge ${it.grade}">${GRADE[it.grade]}</span><span class="badge">added line</span>`)}
+    ${pair('added', esc(it.applied_text || '').replace(/\n/g, '⏎'))}
+    ${reason(it)}
+    ${linesBlock(it, true)}
+    ${ev ? `<div class="small">${ev}</div>` : ''}
+    ${player(it)}
+    <div class="actions">
+      <button data-act="reject">${d.decision === 'rejected' ? '✗ Removed' : 'Remove'}</button>
+      <button data-act="clear">Keep</button>
+    </div>
+  </div>`;
+}
+// A regrouping already applied (and retimed by the realign): shown for the record.
+function regroupRow(it) {
+  const was = it.draft_cues.map(c => esc(c.text).replace(/\n/g, '⏎')).join(' ｜ ');
+  const now = it.proposed_cues.map(c => esc(c.text).replace(/\n/g, '⏎')).join(' ｜ ');
+  return `<div class="card row" data-id="${it.id}" data-cat="${it.category}">
+    ${head(it, '<span class="badge">re-cut</span>')}
+    ${pair('was', was, 'now', now)}
+    ${reason(it)}
+    ${it.realigned ? '<div class="small">Timed again by the realign that followed; it stays as it is.</div>' : ''}
+    ${player(it)}
+  </div>`;
+}
 function card(it) {
+  if (isAdded(it)) return addedRow(it);
+  if (isRegrouped(it)) return regroupRow(it);
   if (it.cleanup && it.status === 'applied') return row(it);
   if (it.grade === 'keep') return keepRow(it);
   const d = dec[it.id] || {};
@@ -475,7 +538,8 @@ function card(it) {
     : pair('draft', it.draft_html, 'proposed', it.proposed_html);
   const prop = structural
     ? `<div class="small"><span class="label">now</span>${it.current_at}</div>` +
-      `<div class="text"><span class="label">${it.proposed_cues.length > 1 ? 'split into' : 'retime to'}</span></div>` +
+      (it.draft_cues.length ? it.draft_cues.map(c => `<div class="text" style="font-size:16px"><span class="label">${c.at}</span>${esc(c.text).replace(/\n/g,'<br>')}</div>`).join('') : '') +
+      `<div class="text"><span class="label">${it.insert ? 'add line' : it.span ? 'cut into' : it.proposed_cues.length > 1 ? 'split into' : 'retime to'}</span></div>` +
       it.proposed_cues.map(c => `<div class="text" style="font-size:16px"><span class="label">${c.at}</span>${esc(c.text).replace(/\n/g,'<br>')}</div>`).join('')
     : '';
   const alts = it.alternatives.length ? `<div class="small"><span class="label">could be</span>${it.alternatives.map(esc).join(' · ')}</div>` : '';

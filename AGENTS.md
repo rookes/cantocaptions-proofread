@@ -11,7 +11,7 @@ heavy, deterministic work.
 Load the skill that fits the request before you start.
 
 - `proofread-subtitles`: proofread, check, review or correct an episode or a subtitle file
-- `clean-draft`: the same, when the subtitles are AI-generated or ASR output (`machine_draft: true` in `ccp status`) or very messy. Clean first; `proofread-subtitles` only for a full pass.
+- `clean-draft`: the same, when the subtitles are AI-generated or ASR output (`machine_draft: true` in `ccp status`), or a messy, rough or WIP hand-made file: standards, wording and particles line by line, missing lines, re-cutting and a realign. `proofread-subtitles` only for a full pass after it.
 - `review-particles`: check or fix only the sentence-final particles (喇/啦, 啊/呀, 㗎/嘎 …) of an episode or file
 - `prepare-draft`: realign, retime, resync or transcribe an episode; run cantocaptions-ai / ASR. Then proofread if that was asked for.
 - `subtitles-from-link`: a video link (YouTube or similar) to make subtitles for
@@ -65,8 +65,10 @@ reads it: plain words, no tool numbers or jargon (investigate-line, "Recording")
    If `ccp` cannot do something, report what it said and ask the user.
 2. **Never commit, push, branch, stash or reset** in any repository.
 3. **Change subtitle files only when the user asked for edits**, and only through `ccp apply`,
-   `ccp clean` and `ccp publish`. Timings change only when the user asked for retiming or
-   splitting.
+   `ccp clean`, `ccp segment`, `ccp pipeline` and `ccp publish`. Timings change only when the
+   user asked for retiming or splitting, or in the cleanup of a machine-made or messy draft
+   (`clean-draft`: re-cutting, missing lines and the realign that times them). You never type
+   a timestamp: the tools compute every time.
 4. **Do not modify the sibling repositories** (cantocaptions-ai, cantocaptions-dataset,
    subtitle-clip-studio) or `dictionaries/`. If one needs a change or a rebuild, tell the user.
 5. **Say before OCR** (`ccp reference --ocr`): tell the user in one line that you are reading
@@ -161,6 +163,7 @@ Set up:
 Read:
 - `render`: the review stream (cues with reference, ASR and convention lines): a window, or the whole episode saved to a file
 - `cue`: everything known about one or more cues, with Jyutping
+- `missing`: reference lines no cue covers (`+R#N`): where the draft may be missing a line
 Look up:
 - `sounds-like`: words that sound like a span (words.hk, and the strict corpus when there is one)
 - `dict`: words.hk entries (a particle is looked up by its reading)
@@ -169,10 +172,10 @@ Look up:
 Listen:
 - `listen`: re-run the recognisers on a cue with more context (GPU)
 - `score`: which candidate texts fit a cue's audio better than the draft
-- `timing`: compute a retime or a split from the audio
 Record:
 - `flag`: record each decision: fix, suggest, query or keep
 - `clean`: the cleanup pass: bulk text edits, recorded and applied at once
+- `segment`: in the cleanup, re-cut cues (split, move words between them) before the realign, join quick exchanges after it
 Output:
 - `report`: the HTML review page with audio clips
 - `apply`: write recorded corrections into the draft

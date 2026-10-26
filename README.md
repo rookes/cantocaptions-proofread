@@ -56,7 +56,7 @@ source/
 |---|---|---|
 | CantoCaptions | finding a subtitle by show and episode; the strict corpus (with the dataset); `publish` into the library | give the subtitle's path, or pick one beside the media; no corpus; `publish --to PATH` |
 | cantocaptions-dataset | subtitle-to-media links, quality tiers, the strict corpus, current variant rules | media is searched for by name in your media folders (always confirmed with you); no tiers or corpus; lint uses `config/standardization.snapshot.toml` |
-| cantocaptions-ai | audio evidence (`evidence`, `listen`, `score`, `timing`), `pipeline`, OCR of image subtitle tracks (with its `ocr` extra) | a text-only proofread against the reference and the conventions |
+| cantocaptions-ai | audio evidence (`evidence`, `listen`, `score`, `timing`), missing lines (`listen --missing`), `pipeline`, OCR of image subtitle tracks (with its `ocr` extra) | a text-only proofread against the reference and the conventions |
 
 `uv run ccp setup` reports which are present. On first use the agent asks where the missing
 ones are (or records that you do not have them) and writes the answers to
@@ -117,17 +117,18 @@ profile so every session (including an agent's, if its terminal loads the profil
 | `ccp publish <id>` | copy a pipeline draft back over the source file in CantoCaptions |
 | `ccp fetch <url>` | download a video's audio and its subtitles (as references) with yt-dlp |
 | `ccp export <id>` | one folder with the final subtitles, the original ASR, the references and the report |
-| `ccp timing <id> N [--split "a\|b"]` | retime or split proposals from the stored audio alignment |
+| `ccp segment <id> --edits FILE` | cleanup pass only: re-cut cues without changing a word before the realign, join quick exchanges after it |
+| `ccp missing <id>` | reference lines no cue covers (`+R#N`): where the draft may be missing a line |
 | `ccp reference <id>` | find/extract/OCR a reference subtitle and line up its timing |
 | `ccp evidence <id>` | (GPU) both recognisers and aligner peaks for every cue |
-| `ccp render <id> --from N --to M` / `--save` / `--only lint` | the review stream, printed or saved to `work/<id>/review.txt`; `--only` keeps just the cues with lint (or `asr`, `weak`, `timing`) lines |
+| `ccp render <id> --from N --to M` / `--save` / `--only lint` | the review stream, printed or saved to `work/<id>/review.txt`; `--only` keeps just the cues with lint (or `asr`, `weak`, `timing`, `seg`, `missing`) lines |
 | `ccp cue <id> N` | everything about one cue |
 | `ccp sounds-like <span> --hyp …` | words that sound like a suspect span (words.hk + strict corpus) |
 | `ccp dict` | words.hk dictionary (particles are looked up by their reading) |
 | `ccp corpus` | evidence from strict-tier subtitles only; `--final` counts the particles that end a phrase |
 | `ccp particles scan <id>` / `explain 喇` / `colloc <phrase>` / `model <id>` / `note add` | sentence-final particles: every particle of a draft with what the standards, the fine-tuned recogniser (GPU `model`) and the strict-corpus and recorded collocations say; one particle's usage; which phrases pull which particle; record a collocation (`particles/collocations.toml`) |
-| `ccp listen`, `ccp score` | (GPU) re-run recognisers on a cue; CTC-score candidate texts (from stored emissions, no GPU). Both take many cues from `--json-file` |
-| `ccp clean <id> --lint` / `--edits FILE` | text-only cleanup of machine-made drafts: bulk edits, recorded as flags and applied at once |
+| `ccp listen`, `ccp score` | (GPU) re-run recognisers on a cue (`--missing N`: a reference line no cue covers, heard four ways); CTC-score candidate texts (from stored emissions, no GPU). Both take many cues from `--json-file` |
+| `ccp clean <id> --lint` / `--edits FILE` | text cleanup of machine-made drafts: bulk edits, recorded as flags and applied at once |
 | `ccp flag add/keep/update/list` | record each decision: grade fix / suggest / query / keep, with a required reason |
 | `ccp report <id>` | HTML report with clips, opened in the browser from a local server; decisions save into the workspace |
 | `ccp apply <id> [--reviewed \| --decisions …] [--include-suggest]` | apply corrections in place (text only, never commits) |

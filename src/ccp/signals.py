@@ -5,6 +5,8 @@
     weak     the aligner barely heard part of the cue (`!` line)
     timing   realign doubted the cue's timing (`T` line)
     particle the particle scan doubted a sentence-final particle (`ccp particles scan`)
+    seg      the segmentation check pointed at how the cue is cut (`S` line)
+    missing  a reference line no cue covers follows the cue (`+R` line)
 
 A cue with none of these was found by the agent alone. They are kept in
 work/<id>/signals.json as first seen, so an edit that clears a lint hit does not erase the fact
@@ -25,13 +27,15 @@ KINDS = {
     "weak": ("Hard to hear", "part of the line barely matched the audio"),
     "timing": ("Timing", "the realign doubted its timing"),
     "particle": ("Particle scan", "the particle scan doubted its sentence-final particle"),
+    "seg": ("Segmentation", "the segmentation check pointed at how the line is cut"),
+    "missing": ("Reference only", "a reference line had no subtitle line: one may be missing"),
 }
 FILE = "signals.json"
 
 
 def current(episode_id: str) -> dict[int, dict]:
     """{cue: {"text": cue text, "kinds": [...]}} for the draft as it is now."""
-    from .render import asr_differences, hard_to_hear
+    from .render import asr_differences, hard_to_hear, ref_orphans, segment_signals
     ep = episode.load(episode_id)
     if not ep.get("srt"):
         return {}
@@ -40,13 +44,16 @@ def current(episode_id: str) -> dict[int, dict]:
     linted = {r["cue"] for r in lint.lint_file(Path(ep["srt"]), ep.get("show_slug"))}
     timed = {r["cue"] for r in episode.read_jsonl(episode_id, "timing.jsonl")}
     particled = _particle_suspects(episode_id)
+    seg = segment_signals(cues, ep)
+    before_orphan = {o["after"] for o in ref_orphans(cues, episode.reference_cues(episode_id))}
     out = {}
     for c in cues:
         ev = evidence.get(c.pos, {})
         differ = asr_differences(c.text, ev)
         kinds = [k for k, on in (("lint", c.pos in linted), ("asr", bool(differ)),
                                  ("weak", bool(hard_to_hear(ev, bool(differ)))),
-                                 ("timing", c.pos in timed), ("particle", c.pos in particled)) if on]
+                                 ("timing", c.pos in timed), ("particle", c.pos in particled),
+                                 ("seg", c.pos in seg), ("missing", c.pos in before_orphan)) if on]
         out[c.pos] = {"text": c.text, "kinds": kinds}
     return out
 

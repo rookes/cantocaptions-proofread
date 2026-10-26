@@ -258,11 +258,91 @@ def timing_checks(cues: list[Cue]) -> list[dict]:
     return out
 
 
+# Style hints a messy hand-made file needs most (all "query": the agent reads the line).
+# Particles that end a clause and are almost never anything else: one followed straight by
+# more words (not by 你, which the style guide lets follow without a pause) wants a comma.
+CLAUSE_PARTICLES = set("喇啦吖囉囖喎㗎嘛啫咋嘞噃")
+NO_COMMA_AFTER = set("你") | CLAUSE_PARTICLES | set(SENT_END) | {"\n", " "}
+LEAD_INTERJECTIONS = set("嗱嘩唉咦")          # 嗱，你睇下啦
+LONE_INTERJECTIONS = set("吖嗬啊呀哦噢哎唉誒呃嗯吓哈嘿")
+MEANINGFUL_ALONE = {"嗯", "吓？", "哦？"}
+QUOTED_RUN = 4
+_LATIN_WORD = re.compile(r"[A-Za-z][A-Za-z'’\-]*")
+
+
+def _inside_term(text: str, k: int) -> bool:
+    """Is text[k] part of a dictionary word (無啦啦, 咖喇) rather than a particle on its own?"""
+    for lo in range(max(0, k - 2), k + 1):
+        for hi in range(k + 1, min(len(text), lo + 4) + 1):
+            if hi - lo >= 2 and dictionary.has_term(text[lo:hi]):
+                return True
+    return False
+
+
+def style_checks(cues: list[Cue]) -> list[dict]:
+    """English casing, commas after particles and openers, lone interjections, and a passage
+    read aloud with every line in quotes."""
+    out = []
+    caps = Counter()
+    for c in cues:
+        for line in c.text.split("\n"):
+            for m in _LATIN_WORD.finditer(line):
+                if m.start() > 0 and m.group()[:1].isupper() and not m.group().isupper():
+                    caps[m.group()] += 1
+    for c in cues:
+        text = c.text
+        for line in text.split("\n"):
+            body = line.lstrip("-")
+            for m in _LATIN_WORD.finditer(body):
+                w = m.group()
+                before = body[:m.start()].rstrip()
+                mid = bool(before) and not before.endswith(tuple("。？！?!.「『"))
+                # A word the file capitalises mid-line twice or more is taken for a name.
+                if (mid and w[:1].isupper() and not w.isupper() and caps[w] < 2
+                        and not body[m.end():].startswith(".")):
+                    out.append(_hit(c, "latin_case", w, w.lower(), "query",
+                                    "English mid-line is lower case unless it is a name or a title"))
+                elif len(w) >= 4 and w.isupper() and re.search(r"[AEIOU]", w[1:]):
+                    out.append(_hit(c, "latin_case", w, w.capitalize(), "query",
+                                    "all capitals: written as a normal word unless it is an acronym"))
+            for k, ch in enumerate(body[:-1]):
+                nxt = body[k + 1]
+                particle = ch in CLAUSE_PARTICLES or (ch in "啊呀" and k > 0 and jyutping.is_cjk(body[k - 1]))
+                if (particle and nxt not in NO_COMMA_AFTER and jyutping.is_cjk(nxt)
+                        and not _inside_term(body, k)):
+                    out.append(_hit(c, "particle_comma", body[max(0, k - 2):k + 2], None, "query",
+                                    f"a comma after {ch} before more words? (not before 你)"))
+            if len(body) > 1 and body[0] in LEAD_INTERJECTIONS and jyutping.is_cjk(body[1]):
+                out.append(_hit(c, "lead_comma", body[:2], f"{body[0]}，{body[1]}", "query",
+                                f"a comma after the opening {body[0]}?"))
+        bare = text.strip().rstrip("…？！?!，").strip()
+        if bare and all(ch in LONE_INTERJECTIONS for ch in bare) and text.strip() not in MEANINGFUL_ALONE:
+            out.append(_hit(c, "lone_interjection", text.strip(), None, "query",
+                            "an interjection on its own: take it out (ccp clean N|-|reason) or join it to its "
+                            "neighbour, unless it means something here (嗯 agreeing, 吓？ asking)"))
+    runs, cur = [], []
+    for c in cues:
+        if c.text.strip().startswith("「") and c.text.strip().endswith("」"):
+            cur.append(c)
+            continue
+        runs.append(cur)
+        cur = []
+    runs.append(cur)
+    for run in runs:
+        if len(run) >= QUOTED_RUN:
+            for c in run:
+                out.append(_hit(c, "quoted_run", "「」", "", "query",
+                                f"cues {run[0].pos}-{run[-1].pos} are all in quotes: a passage read aloud "
+                                "goes without quotes on every line"))
+    return out
+
+
 def lint_file(path: Path, show_slug: str | None = None) -> list[dict]:
     cues = SrtFile(path).cues
     avoid = glossary_avoid(show_slug)
     rows = [h for c in cues for h in check_cue(c, avoid)]
     rows += minority_spellings(cues)
     rows += timing_checks(cues)
+    rows += style_checks(cues)
     rows.sort(key=lambda r: r["cue"])
     return rows

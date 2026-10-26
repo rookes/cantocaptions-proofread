@@ -16,6 +16,7 @@ each with a reason. Those become work/<id>/timing.jsonl and show up as `T` lines
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -23,7 +24,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import episode, flags as flagstore, paths
+from . import episode, flags as flagstore, paths, signals
 from .srtio import SrtFile
 
 MODES = ["auto", "transcript", "sync", "adjust"]
@@ -91,11 +92,19 @@ def run(episode_id: str, kind: str, mode: str = "adjust", input_path: str | None
                          "realign the draft itself with --input draft, or pass --force.")
     stamp = time.strftime("%Y%m%d-%H%M%S")
     flags: list[str] = []
+    notes: list[str] = []
     if kind == "realign":
         src = (ep["srt"] if input_path == "draft" else input_path) or ep.get("source_srt")
         if not src or not Path(src).exists():
             raise SystemExit("nothing to realign: this workspace has no source subtitle (give --input FILE)")
         flags = ["--realign", str(Path(src).resolve()), "--realign_mode", mode]
+        if carries and ep.get("segmentation") and mode == "adjust" and not any(
+                x.startswith("--realign_split") for x in extra):
+            # The agent has decided where every cue is cut: the realign times them, it does
+            # not cut them again at its own pauses.
+            flags += ["--realign_split", "off"]
+            notes.append("the draft was re-segmented, so the realign keeps its cues as they are "
+                         "(--realign_split off)")
         run_dir = episode.path(episode_id, "pipeline") / f"realign-{mode}-{stamp}"
     elif kind == "transcribe":
         src = None
@@ -120,12 +129,24 @@ def run(episode_id: str, kind: str, mode: str = "adjust", input_path: str | None
         origin["machine"] = True          # still the models' text, however much it was cleaned
     if carries and applied:
         origin["carried_corrections"] = len(applied)
+    if carries:
+        for key in ("cleanup", "segmentation"):
+            if ep.get(key):
+                origin[key] = ep[key]
+    old_cues = SrtFile(Path(ep["srt"])).cues if carries else []
+    old_records = flagstore.load(episode_id) if carries else []
+    old_signals = signals.load(episode_id) if carries else {}
     moved = episode.set_draft(ep, out, origin)
     draft = Path(moved["draft"])
     n_suspect = _timing_notes(episode_id, run_dir, draft) if kind == "realign" else 0
     result = {"status": "ok", "kind": kind, "mode": origin["mode"], "seconds": round(time.time() - t0),
               "draft": str(draft), "cues": len(SrtFile(draft).cues), "run_dir": str(run_dir),
               "moved_to_previous": moved["moved_to_previous"]}
+    if notes:
+        result["notes"] = notes
+    if old_records or old_signals:
+        result["records_carried"] = carry_records(episode_id, old_cues, SrtFile(draft).cues,
+                                                  old_records, old_signals)
     if src and Path(src).exists():
         result["input_cues"] = len(SrtFile(Path(src)).cues)
     if kind == "realign":
@@ -138,6 +159,81 @@ def run(episode_id: str, kind: str, mode: str = "adjust", input_path: str | None
                       "the draft, and " + ("`ccp publish <id>` puts it into CantoCaptions once the user agrees"
                                            if ep.get("source_srt") else "`ccp export <id>` hands it back"))
     return result
+
+
+def cue_mapping(old: list, new: list) -> dict[int, int]:
+    """Old cue position -> new cue position across a realign of the draft itself. The realign
+    keeps every cue's text and order (it can drop a cue the recording lacks, and outside a
+    re-segmented draft split one at a pause), so the texts are lined up in sequence; a split
+    cue maps to its first piece."""
+    import difflib
+    a = [c.text for c in old]
+    b = [c.text for c in new]
+    out: dict[int, int] = {}
+    sm = difflib.SequenceMatcher(a=a, b=b, autojunk=False)
+    for op, i1, i2, j1, j2 in sm.get_opcodes():
+        if op == "equal":
+            out.update({old[i1 + k].pos: new[j1 + k].pos for k in range(i2 - i1)})
+            continue
+        # A cue split at a pause: its pieces spell it out in order.
+        j = j1
+        for i in range(i1, i2):
+            joined = ""
+            for jj in range(j, j2):
+                joined += b[jj].replace("\n", "")
+                if joined == a[i].replace("\n", ""):
+                    out[old[i].pos] = new[j].pos
+                    j = jj + 1
+                    break
+                if not a[i].replace("\n", "").startswith(joined):
+                    break
+    return out
+
+
+def carry_records(episode_id: str, old_cues: list, new_cues: list, records: list[dict],
+                  sig: dict[int, dict]) -> dict:
+    """Put the records (and the tool signals) of the draft that was just realigned onto the new
+    draft, so the report shows every cleanup edit, regrouping and inserted line at its new
+    time. The old copies stay in previous/. Records on a cue the realign dropped stay there
+    only."""
+    from . import signals as sigstore
+    m = cue_mapping(old_cues, new_cues)
+    by_pos = {c.pos: c for c in new_cues}
+    kept, lost = [], []
+    for f in records:
+        if f.get("insert") and f["status"] != "applied":
+            new_pos = m.get(f["cue"], 0) if f["cue"] else 0       # still waiting to go in after its cue
+            if f["cue"] and not new_pos:
+                lost.append(f["id"])
+                continue
+            f["cue"] = new_pos
+            kept.append(f)
+            continue
+        new_pos = m.get(f["cue"])
+        if new_pos is None:
+            lost.append(f["id"])
+            continue
+        c = by_pos[new_pos]
+        if f.get("span"):
+            n = f["span"][1] - f["span"][0]
+            f["span"] = [new_pos, new_pos + n]
+            if f["status"] == "applied":
+                f["realigned"] = True       # its times are the realign's now; it stays as it is
+            else:
+                f["draft_cues"] = [{"start": x.start, "end": x.end, "text": x.text}
+                                   for x in new_cues[new_pos - 1:new_pos + n]]
+        f["cue"], f["start"], f["end"] = new_pos, c.start, c.end
+        kept.append(f)
+    flagstore.save(episode_id, sorted(kept, key=lambda f: (f["cue"], f["id"])))
+    if sig:
+        moved = {m[p]: v for p, v in sig.items() if p in m}
+        episode.path(episode_id, sigstore.FILE).write_text(
+            json.dumps({str(k): v for k, v in sorted(moved.items())}, ensure_ascii=False), encoding="utf-8")
+    out = {"records": len(kept)}
+    if lost:
+        out["not_carried"] = {"flags": lost, "why": "their cues are gone from the realigned draft (the recording "
+                                                    "lacks them); the records are kept in previous/"}
+    return out
 
 
 def _library_name(name: str) -> str:

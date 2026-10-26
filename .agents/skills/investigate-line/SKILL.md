@@ -71,7 +71,14 @@ few where the meaning is wrong and the right words are not obvious.
    `corpus:`), otherwise a **suggest** or a **query** with the particles as alternatives. The
    recognisers' transcribed particles are never the signal. A particle written with the wrong
    character for its reading (`cantocaptions-standards`) is a **fix**.
-4. **Record** exactly one entry for the cue (below) **as soon as you have decided it**, then
+4. **A missing line** (a `+R#N` line: the reference has a line where no cue is). First decide
+   whether anything is missing at all: a neighbouring cue may already say it (the reference
+   is timed a little off, or splits or merges lines differently), and songs, signs and cries
+   are often left out on purpose. If it is missing, `ccp listen <id> --missing N` and write the
+   line from what both recognisers heard, the reference's meaning and the neighbours, then
+   `ccp flag add <id> --missing N` (`clean-draft`, "Missing lines", has the whole procedure and
+   the grades the close hearings allow). In a normal proofread the line waits for the reviewer.
+5. **Record** exactly one entry for the cue (below) **as soon as you have decided it**, then
    move on: the record holds the decision, so do not reopen it later. A suspect you checked
    and found right is recorded too, as a keep.
 

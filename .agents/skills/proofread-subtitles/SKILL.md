@@ -106,7 +106,10 @@ Each is a reason to *look*, not proof:
 - a `?` slot in the particle scan (`ccp particles scan`): the standards' usage, the fine-tuned
   recogniser's comparison or a collocation doubts the particle;
 - a name written differently from the glossary, `R` or elsewhere in the file;
-- Standard Written Chinese rather than spoken Cantonese.
+- Standard Written Chinese rather than spoken Cantonese;
+- a `+R#N` line: a reference line no cue covers. Usually the reference is mistimed and a
+  neighbouring cue says it already, or it is on-screen text or a song the subtitles leave out;
+  sometimes the line really is missing (`investigate-line`, "A missing line").
 
 Not reasons by themselves: a recogniser's sentence-final particle differing from the draft's
 (AGENTS.md principle 4), and a recogniser writing another spelling of the same word
@@ -147,18 +150,10 @@ file). They are the same file unless `ccp pipeline` or `ccp copy-draft` made a w
 then `ccp apply` edits the copy and the user's file changes only through `ccp publish`. Say
 which one you edited.
 
-## Timing and splitting (only when the user asks for it)
+## Timing and cutting
 
-Look for `T` lines (cues realign could not place), lint `short_duration` and `overlap`, and cues
-holding two sentences across a clear pause or two speakers without `-` lines. Let the tool
-compute the times; never type timestamps.
-- Split: `uv run ccp timing <id> <N> --split "<first piece>|<second piece>"` (the pieces must
-  spell out the cue; `⏎` for a line break). An `onset_gaps_s` of about 0.7 s or more is a
-  natural cut; under 0.4 s is one breath, better left whole.
-- Retime: `uv run ccp timing <id> <N>`.
-- Record: `uv run ccp flag add <id> --cue N --category segmentation` (or `timing`) `--grade
-  suggest --timing --reason "..."`. `--timing` attaches the computed proposal. A record carries
-  a text fix or a timing proposal, not both: fix the text first. If the output says the aligner
-  barely hears the cue, grade it `query`.
-- Retimes and splits are applied only from the reviewer's decisions, or with `ccp apply <id>
-  --structure` when the user asked for them directly.
+You do not time or re-cut a hand-made file in a proofread: the cutting is the subtitler's
+choice, and timing belongs to the realign. Never propose a retime or a split. If the timing or
+the cutting is poor throughout (`T` lines everywhere, cues cut mid-word, two speakers in most
+cues), say so in the summary and offer the cleanup (`clean-draft`), which re-cuts the file and
+realigns it.

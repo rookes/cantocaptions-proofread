@@ -71,14 +71,17 @@ def load_isolation():
     return load_with_offline_fallback(load_vocal_isolation, "mbroformer", "cuda", local_files_only=False)
 
 
-def asr_texts(tag: str, clips: list, stage=None) -> list[str]:
+def asr_texts(tag: str, clips: list, stage=None, contexts: list | None = None) -> list[str]:
     """Transcribe each 16 kHz mono clip with one model; returns texts in order. With *stage*
     (an ASR model the GPU server keeps loaded) it is used and kept; otherwise the model is
-    loaded for this call and unloaded after it."""
+    loaded for this call and unloaded after it. *contexts*: per clip, ASR context biasing text
+    or None."""
     own = stage is None
     if own:
         stage = load_asr(tag)
-    segs = [{"start": 0.0, "end": len(c) / SAMPLE_RATE, "audio": c} for c in clips]
+    contexts = contexts or [None] * len(clips)
+    segs = [{"start": 0.0, "end": len(c) / SAMPLE_RATE, "audio": c, **({"context": x} if x else {})}
+            for c, x in zip(clips, contexts)]
     out = stage.process(segs)["segments"]
     texts = [s.get("text", "") for s in out]
     if own:

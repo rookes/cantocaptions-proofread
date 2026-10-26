@@ -33,6 +33,7 @@ from . import apply as applier, episode, flags as flagstore, lint
 from .particles import BOUNDARY, final_mask as _final_mask
 from .srtio import invisible_name
 
+REMOVE = "-"          # `N|-|reason`: take cue N out (a lone interjection, a stray fragment)
 PUNCT = set("，。？！…,.?!；;：:、「」『』（）()\"'“”‘’-— \n")
 # Particle-character rules (compound_particle, particle_variant) are left to the agent: they
 # also match real words (出嫁 → 出㗎, 啊可惜 → 啊嗬惜), so each needs a reading of the line.
@@ -51,7 +52,7 @@ def parse(lines: list[str]) -> list[dict]:
         cue, text = int(parts[0].strip()), parts[1].strip()
         why = parts[2].strip() if len(parts) > 2 else ""
         if not text:
-            raise ValueError(f"cue {cue}: empty text (deleting a cue is not a cleanup edit; flag it instead)")
+            raise ValueError(f"cue {cue}: empty text (to take the cue out, write - as its text: N|-|reason)")
         if cue in seen:
             raise ValueError(f"cue {cue} appears twice; give one full text per cue")
         seen.add(cue)
@@ -59,7 +60,8 @@ def parse(lines: list[str]) -> list[dict]:
         head, sep, rest = why.partition(":")
         if sep and head.strip() in flagstore.CATEGORIES:
             category, why = head.strip(), rest.strip()
-        out.append({"cue": cue, "text": None if text == "?" else text, "why": why, "category": category})
+        out.append({"cue": cue, "text": None if text in ("?", REMOVE) else text, "why": why, "category": category,
+                    "remove": text == REMOVE})
     return out
 
 
@@ -79,10 +81,14 @@ def _run(seg: str, mask: list[bool], end: int) -> int:
     return n
 
 
-def keep_particles(old: str, new: str) -> tuple[str, list[str], list[str]]:
+def keep_particles(old: str, new: str, allow=None) -> tuple[str, list[str], list[str]]:
     """*new* with the draft's clause-final particles put back wherever the edit changed,
     added or dropped one; returns (text, kept, as_words). Other changes in the same edit
-    stand: 孭得𠸏 → 孭得起嘅 becomes 孭得起𠸏. The cleanup pass does not judge particles.
+    stand: 孭得𠸏 → 孭得起嘅 becomes 孭得起𠸏.
+
+    *allow(old_run, new_run)* lets a particle change through: in a hand-made draft, one the
+    fine-tuned recogniser backs (`particle_change_allowed`). Without it the cleanup judges no
+    particles.
 
     One exception: a particle character the edit turns into a plain word (爛嘅 → 爛gag,
     唔啱咯 → 唔啱路) was a mishearing of a word, not a particle choice. It is applied and
@@ -109,10 +115,50 @@ def keep_particles(old: str, new: str) -> tuple[str, list[str], list[str]]:
             # (快啲啊，公主 → 雅典娜公主). Not a particle choice: applied, and listed.
             out.append(b_seg)
             as_words.append(f"{a_main}→{b_main}")
+        elif allow is not None and da and db and allow(da, db):
+            out.append(b_seg)            # a particle change the recogniser backs
         else:
             out.append(b_core + da + b_tail)
             kept.append(f"{da or '∅'} (the edit had {db or '∅'})")
     return "".join(out), kept, as_words
+
+
+def particle_backing(episode_id: str, ep: dict) -> dict[int, list[dict]]:
+    """The fine-tuned recogniser's particle comparisons per cue (`ccp particles model`), for a
+    hand-made draft only: on a draft that recogniser wrote, it only repeats its own choice."""
+    if episode.machine_draft(ep):
+        return {}
+    rows: dict[int, list[dict]] = {}
+    for r in episode.read_jsonl(episode_id, "particle_model.jsonl"):
+        rows.setdefault(r["cue"], []).append(r)
+    return rows
+
+
+def particle_change_allowed(rows: list[dict]):
+    """allow(old_run, new_run) for keep_particles: the recogniser clearly prefers, or leans
+    to, exactly the new particle over the draft's (docs/particle-scoring.md in cantocaptions-ai:
+    a lean is 2 nats, about 2% false alarms on correct particles; the agent's reading of the
+    line is the other half of the decision)."""
+    from .particle_scan import model_view
+
+    def allow(old_tail: str, new_tail: str) -> bool:
+        # The edit's diff sees only the changed end of a run (啦 → 喇 in 嘅啦); the recogniser
+        # scored the whole run.
+        for r in rows:
+            run = r.get("run", "")
+            if not run.endswith(old_tail):
+                continue
+            new_run = run[:len(run) - len(old_tail)] + new_tail
+            m = model_view(r, run, True)
+            if m and m.prefers_other and m.best == new_run and m.level in ("clear", "lean"):
+                return True
+        return False
+    return allow
+
+
+def _particles_differ(old: str, new: str) -> bool:
+    from .particles import slots
+    return [s.run for s in slots(old)] != [s.run for s in slots(new)]
 
 
 def _final_only(text: str, found: str, suggest: str) -> str:
@@ -202,7 +248,9 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
             fixed, _ = _lint_pass(c.text, c, avoid)
             if fixed != c.text or c.invisible:
                 lint_cues.add(c.pos)
-    planned, queries, particles, particle_words, held = [], [], [], [], []
+    planned, queries, particles, particle_words, held, removals = [], [], [], [], [], []
+    backing = particle_backing(episode_id, ep)
+    changed_particles = []
     for pos in sorted(set(by_cue) | lint_cues):
         c = srt.cue(pos)
         e = by_cue.get(pos)
@@ -211,11 +259,18 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
             e = None                 # no reason: the agent's edit waits; lint fixes may still apply
             if pos not in lint_cues:
                 continue
+        if e and e.get("remove"):
+            removals.append({"cue": pos, "from": c.text, "reason": e["why"]})
+            continue
         if e and e["text"] is None:
             queries.append(e)
             continue
         agent_text = e["text"].replace("⏎", "\n") if e else c.text
-        agent_text, kept, as_words = keep_particles(c.text, agent_text)
+        allow = particle_change_allowed(backing[pos]) if pos in backing else None
+        agent_text, kept, as_words = keep_particles(c.text, agent_text, allow)
+        backed = allow is not None and _particles_differ(c.text, agent_text)
+        if backed:
+            changed_particles.append(f"cue {pos}: {c.text} → {agent_text}".replace("\n", "⏎"))
         if kept:
             particles.append(f"cue {pos}: kept " + "; ".join(kept))
         if as_words:
@@ -231,20 +286,24 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
                                                   else _category(c.text, text, lint_only))
         evidence = [e["why"]] if e and e["why"].split(":", 1)[0].strip() in flagstore.SOURCES else []
         evidence += [f"lint: {x}" for x in fixes]
+        if backed:
+            evidence.append("particle_model: the fine-tuned recogniser prefers the new particle")
         reason = e["why"] if e else "convention: " + "; ".join(fixes)
         planned.append({"cue": pos, "from": c.text, "to": text, "category": category,
                         "reason": reason, "evidence": evidence})
-    result = {"episode_id": episode_id, "edits": len(planned), "queries": len(queries),
+    result = {"episode_id": episode_id, "edits": len(planned), "removals": len(removals), "queries": len(queries),
               "lint_fixed_cues": len([p for p in planned if any(x.startswith("lint:") for x in p["evidence"])])}
     if held:
         result["held_back"] = {"cues": held, "why": "these edit lines have no reason (N|text|reason): "
                                "add one sentence on why the line is wrong and the new text right, then "
                                "submit them again"}
+    if changed_particles:
+        result["particles_changed"] = changed_particles
     if particles:
         result["particles_kept"] = particles
-        result["particles_note"] = ("the cleanup pass never changes sentence-final particles, so the draft's "
-                                    "were kept and the rest of each edit applied. If a particle really is "
-                                    "wrong, record a query (`N|?|particle: ...`) for the reviewer.")
+        result["particles_note"] = ("a particle changes in the cleanup only where the fine-tuned recogniser "
+                                    "backs the new one (hand-made drafts, after `ccp particles model`); the "
+                                    "draft's were put back here and the rest of each edit applied")
     if particle_words:
         result["particles_read_as_words"] = particle_words
         result["particle_words_note"] = ("applied: a particle character replaced by a plain word is a "
@@ -252,7 +311,8 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
     if dry_run:
         result["dry_run"] = True
         result["planned"] = [f"cue {p['cue']} [{p['category']}] {p['from']} → {p['to']}".replace("\n", "⏎")
-                             for p in planned]
+                             for p in planned] + [f"cue {r['cue']} removed: {r['from']}".replace("\n", "⏎")
+                                                  for r in removals]
         return result
     made, skipped = [], []
     for p in planned:
@@ -262,6 +322,13 @@ def clean(episode_id: str, edits: list[dict], use_lint: bool = False, skip_lint:
             made.append(f["id"])
         except ValueError as err:
             skipped.append({"cue": p["cue"], "reason": str(err)})
+    for r in removals:
+        try:
+            f = flagstore.add(episode_id, r["cue"], "extra", "fix", None, [], r["reason"],
+                              extra={"pass": "cleanup", "remove": True})
+            made.append(f["id"])
+        except ValueError as err:
+            skipped.append({"cue": r["cue"], "reason": str(err)})
     for q in queries:
         try:
             flagstore.add(episode_id, q["cue"], q["category"] or "other", "query", None, [], q["why"],
